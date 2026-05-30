@@ -349,7 +349,9 @@ class App {
       alignItems: "center",
       justifyContent: "center",
       cursor: "pointer",
-      zIndex: "30",
+      // No z-index: a stacking context would isolate the logo's blend mode from
+      // the canvas behind it. As a positioned element appended last, it still
+      // paints on top of the (static) canvas.
       transition: "opacity 0.4s",
     } as CSSStyleDeclaration);
     const logo = document.createElement("img");
@@ -360,6 +362,9 @@ class App {
       height: "auto",
       pointerEvents: "none",
       userSelect: "none",
+      // The logo is white-on-black; "screen" drops the black (no-op in screen
+      // blend) and keeps the white text, compositing it over the flower.
+      mixBlendMode: "screen",
     } as CSSStyleDeclaration);
     el.appendChild(logo);
     el.addEventListener("pointerdown", () => this.endIntro());
