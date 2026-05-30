@@ -7,7 +7,8 @@ export type ParamName = "petals" | "open" | "spin" | "sway" | "curve";
 
 export interface ControlPanelCallbacks {
   onBack(): void;
-  onNextFlower(): void;
+  /** Leave the home menu and enter the flower editor. */
+  onEdit(): void;
   onShare(): void;
   onGallery(): void;
   /** index 0 (main) / 1 (secondary); color is the picked [0,1] color. */
@@ -55,6 +56,8 @@ export class ControlPanel {
   private readonly shapeBtn: HTMLButtonElement;
   private readonly paramBtns = new Map<ParamName, HTMLButtonElement>();
   private readonly uiRoot: HTMLDivElement;
+  private readonly col: HTMLDivElement; // editor column
+  private readonly homeBar: HTMLDivElement; // home menu (over the black landing)
 
   // Color picker (below the column)
   private readonly colorPop: HTMLDivElement;
@@ -102,7 +105,7 @@ export class ControlPanel {
     parent.appendChild(this.uiRoot);
     parent = this.uiRoot;
 
-    const col = document.createElement("div");
+    const col = (this.col = document.createElement("div"));
     Object.assign(col.style, {
       position: "absolute",
       top: "14px",
@@ -225,30 +228,46 @@ export class ControlPanel {
 
     parent.appendChild(col);
 
-    // Bottom-right utility buttons: share the current flower + cycle built-ins.
-    // (The original had a richer Share state; this is a minimal modernization.)
-    const utils = document.createElement("div");
-    Object.assign(utils.style, {
+    // Home menu, shown over the black landing background after the intro logo.
+    // Same column/bar style as the editor, but reversed (light on dark) so the
+    // buttons read on black. `edit` opens the editor; plus gallery + share.
+    this.homeBar = document.createElement("div");
+    Object.assign(this.homeBar.style, {
       position: "absolute",
-      bottom: "16px",
-      right: "16px",
-      display: "flex",
+      top: "14px",
+      left: "14px",
+      display: "none",
+      flexDirection: "column",
       gap: "7px",
-      opacity: "0.75",
+      width: `${COLUMN_WIDTH}px`,
       pointerEvents: "auto",
     } as CSSStyleDeclaration);
-    utils.addEventListener("pointerdown", (e) => e.stopPropagation());
-    utils.append(
-      this.makeButton("gallery", () => this.cb.onGallery()),
-      this.makeButton("share", () => this.cb.onShare()),
-      this.makeButton("✿ next", () => this.cb.onNextFlower()),
+    this.homeBar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.homeBar.append(
+      this.makeButton("edit", () => this.cb.onEdit(), true),
+      this.makeButton("gallery", () => this.cb.onGallery(), true),
+      this.makeButton("share", () => this.cb.onShare(), true),
     );
-    parent.appendChild(utils);
+    parent.appendChild(this.homeBar);
   }
 
   /** Show/hide the entire control UI (used by the intro screen). */
   setVisible(visible: boolean): void {
     this.uiRoot.style.display = visible ? "" : "none";
+  }
+
+  /** Home menu: show the reversed edit/gallery/share bar, hide the editor. */
+  showHome(): void {
+    this.closeColor();
+    this.closeParam();
+    this.homeBar.style.display = "flex";
+    this.col.style.display = "none";
+  }
+
+  /** Editor: show the editing column, hide the home menu. */
+  showEditor(): void {
+    this.homeBar.style.display = "none";
+    this.col.style.display = "flex";
   }
 
   setCorolla(data: CorollaData): void {
@@ -415,20 +434,26 @@ export class ControlPanel {
     document.head.appendChild(style);
   }
 
-  private makeButton(label: string, onClick: () => void): HTMLButtonElement {
+  /** A card button. `dark` reverses the colors (light on transparent) so it
+   * reads over the black home/landing background. */
+  private makeButton(
+    label: string,
+    onClick: () => void,
+    dark = false,
+  ): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.textContent = label;
     Object.assign(btn.style, {
       width: `${COLUMN_WIDTH}px`,
       padding: "9px 0",
       borderRadius: "12px",
-      border: "1px solid rgba(0,0,0,0.25)",
-      background: "rgba(255,255,255,0.92)",
-      color: "#6e6e6e",
+      border: `1px solid rgba(${dark ? "255,255,255" : "0,0,0"},0.25)`,
+      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
+      color: dark ? "#f2f2f4" : "#6e6e6e",
       font: "13px system-ui, sans-serif",
       textAlign: "center",
       cursor: "pointer",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+      boxShadow: dark ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
     } as CSSStyleDeclaration);
     btn.addEventListener("click", onClick);
     return btn;

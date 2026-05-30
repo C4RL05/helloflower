@@ -51,7 +51,9 @@ class App {
   private readonly toastEl: HTMLDivElement;
   private toastTimer = 0;
   private introEl?: HTMLDivElement; // built lazily on first startIntro()
+  private logoEl?: HTMLImageElement; // the logo inside introEl (faded via filter)
   private intro = false;
+  private home = false; // home menu (black bg) between intro and editor
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
   private readonly gallery: Gallery;
@@ -95,9 +97,8 @@ class App {
     this.editor.attach(this.scene);
 
     this.panel = new ControlPanel(this.container, {
-      onBack: () => this.frameCamera(),
-      onNextFlower: () =>
-        this.loadFlower((this.flowerIndex + 1) % INCLUDED_FLOWERS.length),
+      onBack: () => this.enterHome(),
+      onEdit: () => this.enterEditor(),
       onShare: () => this.share(),
       onGallery: () => this.gallery.open(),
       onColor: (index, color) => this.onColor(index, color),
@@ -154,6 +155,7 @@ class App {
       loadIndex: (i: number) => this.loadFlower(i),
       setView: (az: number, el: number) => {
         this.intro = false; // the harness controls the view directly
+        this.home = false;
         if (this.introEl) this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
@@ -349,10 +351,10 @@ class App {
       alignItems: "center",
       justifyContent: "center",
       cursor: "pointer",
-      // No z-index: a stacking context would isolate the logo's blend mode from
-      // the canvas behind it. As a positioned element appended last, it still
-      // paints on top of the (static) canvas.
-      transition: `opacity ${INTRO_FADE_MS}ms`,
+      // No z-index / opacity here: either would form an isolated group that
+      // cuts the logo's blend mode off from the canvas (revealing the image's
+      // black backdrop). As a positioned element appended last it still paints
+      // on top of the (static) canvas.
     } as CSSStyleDeclaration);
     const logo = document.createElement("img");
     logo.src = `${import.meta.env.BASE_URL}images/helloflower.png`;
@@ -365,10 +367,14 @@ class App {
       // The logo is white-on-black; "screen" drops the black (no-op in screen
       // blend) and keeps the white text, compositing it over the flower.
       mixBlendMode: "screen",
+      // Fade out by darkening to black (invisible under screen) rather than via
+      // opacity, which would isolate the blend and expose the black backdrop.
+      transition: `filter ${INTRO_FADE_MS}ms`,
     } as CSSStyleDeclaration);
     el.appendChild(logo);
     el.addEventListener("pointerdown", () => this.endIntro());
     this.container.appendChild(el);
+    this.logoEl = logo;
     return el;
   }
 
@@ -379,21 +385,39 @@ class App {
     this.background.setColors(0x000000, 0x000000);
     this.panel.setVisible(false);
     this.introEl.style.display = "flex";
-    this.introEl.style.opacity = "1";
+    if (this.logoEl) this.logoEl.style.filter = "brightness(1)";
     this.orbit.setAngles(0, 88); // top-down
     this.autoSpin = true;
     this.lastInteraction = 0; // start the idle rotation immediately
   }
 
-  /** Dismiss the intro: reveal the UI and tilt to the normal editing view. */
+  /** Dismiss the intro logo and drop into the home menu. */
   private endIntro(): void {
     if (!this.intro || !this.introEl) return;
     this.intro = false;
     const el = this.introEl;
-    el.style.opacity = "0";
+    if (this.logoEl) this.logoEl.style.filter = "brightness(0)"; // fade to black
     window.setTimeout(() => (el.style.display = "none"), INTRO_FADE_MS);
-    this.background.setColors(0xffffff, 0xececf1);
+    this.enterHome();
+  }
+
+  /** Home menu: black background, top-down spinning flower, edit/gallery/share.
+   * Reached from the intro logo and from the editor's `back` button. */
+  private enterHome(): void {
+    this.home = true;
+    this.background.setColors(0x000000, 0x000000);
     this.panel.setVisible(true);
+    this.panel.showHome();
+    this.orbit.glideTo(this.orbit.azimuth, 88); // ease back to top-down
+    this.autoSpin = true;
+    this.lastInteraction = 0; // keep the idle rotation running
+  }
+
+  /** Enter the flower editor: white background, full controls, 3/4 view. */
+  private enterEditor(): void {
+    this.home = false;
+    this.background.setColors(0xffffff, 0xececf1);
+    this.panel.showEditor();
     this.orbit.glideTo(this.orbit.azimuth, 14); // ease down to the 3/4 view
   }
 
@@ -467,13 +491,14 @@ class App {
       touch &&
       touch.phase === "Ended" &&
       !this.gestureConsumed &&
-      this.maxMove < TAP_PX
+      this.maxMove < TAP_PX &&
+      !this.home // no petal selection on the home menu
     ) {
       this.trySelectAt(touch.x, touch.y);
     }
 
-    if (this.intro) {
-      this.orbit.spinIdle(0.2); // spin the rose immediately under the logo
+    if (this.intro || this.home) {
+      this.orbit.spinIdle(0.2); // spin the rose under the logo / home menu
     } else if (
       this.autoSpin &&
       !this.shapeMode &&
