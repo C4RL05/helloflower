@@ -70,3 +70,7 @@ Tests live in `tests/` (unit + e2e); helper/verification scripts in `scripts/`.
 Original concept, art, and Unity app: **HelloEnjoy**. Web port built with
 [Three.js](https://threejs.org), [Vite](https://vitejs.dev),
 [Vitest](https://vitest.dev), and [Playwright](https://playwright.dev).
+
+## License
+
+[MIT](LICENSE) © HelloEnjoy
