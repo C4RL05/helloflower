@@ -13,7 +13,6 @@ import { LightingRig } from "./scene/LightingRig";
 import { setPetalAmbient } from "./scene/PetalMaterial";
 import { paintGradient } from "./ui/gradientTexture";
 
-const DEFAULT_AMBIENT = 0.31373; // RenderSettings ambient (gray 80/255) from the scene
 import { SplineEditor } from "./editors/SplineEditor";
 import { ControlPanel, type ParamName } from "./ui/ControlPanel";
 import {
@@ -103,7 +102,6 @@ class App {
       onToggleShape: (active) => this.onToggleShape(active),
     });
     this.toastEl = this.makeToast();
-    this.makeAmbientSlider();
 
     this.gallery = new Gallery(this.container, {
       store: this.store,
@@ -332,48 +330,6 @@ class App {
 
   private markInteraction(): void {
     this.lastInteraction = performance.now();
-  }
-
-  /** Small top-right slider to tune the scene ambient light. */
-  private makeAmbientSlider(): void {
-    const wrap = document.createElement("div");
-    Object.assign(wrap.style, {
-      position: "absolute",
-      top: "14px",
-      right: "14px",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      padding: "7px 12px",
-      borderRadius: "12px",
-      background: "rgba(255,255,255,0.82)",
-      border: "1px solid rgba(0,0,0,0.1)",
-      font: "12px system-ui, sans-serif",
-      color: "#6e6e6e",
-    } as CSSStyleDeclaration);
-    wrap.addEventListener("pointerdown", (e) => e.stopPropagation());
-
-    const label = document.createElement("span");
-    label.textContent = "ambient";
-    const input = document.createElement("input");
-    input.type = "range";
-    input.min = "0";
-    input.max = "4";
-    input.step = "0.01";
-    input.value = String(DEFAULT_AMBIENT);
-    input.style.width = "110px";
-    const value = document.createElement("span");
-    value.style.minWidth = "28px";
-    value.style.textAlign = "right";
-    value.textContent = DEFAULT_AMBIENT.toFixed(2);
-    input.addEventListener("input", () => {
-      const v = +input.value;
-      setPetalAmbient(v);
-      value.textContent = v.toFixed(2);
-    });
-
-    wrap.append(label, input, value);
-    this.container.appendChild(wrap);
   }
 
   private makeToast(): HTMLDivElement {

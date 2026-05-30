@@ -31,9 +31,10 @@ export const petalEnv = {
   // whatever faces the viewer — the near-flat, texture-dominant look) plus a
   // weaker fixed MAIN directional, over the ambient term. Intensities mirror the
   // originals (cameraLight ~0.85, mainLight ~0.6).
-  // Material Ambient(1,1,1,1) × RenderSettings ambient, which is gray 0.31373
-  // (80/255) — extracted from the binary scene's RenderSettings.
-  uAmbient: { value: 0.31373 },
+  // Ambient term (Material Ambient(1,1,1,1) × scene ambient). The binary scene's
+  // RenderSettings ambient is gray 0.31373, but we use a slightly darker 0.25
+  // for richer petal contrast.
+  uAmbient: { value: 0.25 },
   uCamColor: { value: new Color(0.85, 0.85, 0.85) },
   uMainDir: { value: new Vector3(0.3, 1.0, 0.5).normalize() },
   uMainColor: { value: new Color(0.45, 0.45, 0.45) },
