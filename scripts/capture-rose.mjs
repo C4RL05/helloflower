@@ -57,6 +57,6 @@ await page.evaluate(
   { az: AZ, el: EL, amb: AMB, unlit: process.env.UNLIT === "1" },
 );
 await page.waitForTimeout(700);
-await page.locator("canvas").screenshot({ path: OUT });
+await page.locator("canvas").first().screenshot({ path: OUT });
 await browser.close();
 console.log(`wrote ${OUT}  (AZ=${AZ} EL=${EL}${AMB !== null ? ` AMB=${AMB}` : ""})`);

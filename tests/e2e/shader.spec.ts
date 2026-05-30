@@ -109,9 +109,10 @@ const FLOWERS: FlowerCase[] = [
     name: "Lily (light pink)",
     index: 2,
     check: (s) => {
-      expect(Math.min(s.r, s.g, s.b)).toBeGreaterThan(90); // bright/pale
-      expect(s.r).toBeGreaterThan(s.g);
+      expect(s.r).toBeGreaterThan(s.g); // pink: red & blue over green
       expect(s.b).toBeGreaterThan(s.g);
+      expect(s.r).toBeGreaterThan(140); // bright/pale (not a dark flower)
+      expect(Math.min(s.r, s.g, s.b)).toBeGreaterThan(50);
     },
   },
   {

@@ -11,6 +11,8 @@ export default defineConfig({
   fullyParallel: false,
   use: {
     baseURL: "http://localhost:4173",
+    // Portrait viewport so flowers frame consistently for the color-sample checks.
+    viewport: { width: 480, height: 630 },
     launchOptions: {
       args: [
         "--use-gl=angle",

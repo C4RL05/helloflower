@@ -21,14 +21,33 @@ export interface PetalMasks {
   readonly shadow: Float32Array; // ↔ shadowAlphas
 }
 
+/** Reverse the rows of a width×height mask (vertical flip). */
+function flipVertical(
+  src: ReadonlyArray<number>,
+  w: number,
+  h: number,
+): Float32Array {
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const dst = (h - 1 - y) * w;
+    for (let x = 0; x < w; x++) out[dst + x] = src[y * w + x];
+  }
+  return out;
+}
+
 export function loadPetalMasks(
   shadowVariant: "shadow01" | "shadow02" = "shadow01",
 ): PetalMasks {
+  const w = PETAL_CHANNEL_WIDTH;
+  const h = PETAL_CHANNEL_HEIGHT;
   return {
-    width: PETAL_CHANNEL_WIDTH,
-    height: PETAL_CHANNEL_HEIGHT,
+    width: w,
+    height: h,
     color: Float32Array.from(PETAL_CHANNELS.color),
-    lightmap: Float32Array.from(PETAL_CHANNELS.lightmap),
+    // The lightmap as decoded is oriented base-bright/tip-dark; flip it so the
+    // petal is bright at the tip and dark at the base. The shadow mask is
+    // base-dark (occlusion), so the two now reinforce instead of cancelling.
+    lightmap: flipVertical(PETAL_CHANNELS.lightmap, w, h),
     noise: Float32Array.from(PETAL_CHANNELS.noise),
     shadow: Float32Array.from(PETAL_CHANNELS[shadowVariant]),
   };
