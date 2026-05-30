@@ -9,9 +9,9 @@ import type { PointerInput } from "./PointerInput";
  * Speeds/clamps approximate the original; exact values are a calibration item.
  * Wheel zoom is a web modernization (original used pinch).
  *
- * Sign convention: drag right → azimuth increases; drag up (screen) → elevation
- * increases (view from higher). Flip `ySpeed`/`xSpeed` sign if calibration
- * against the reference shows the gesture inverted.
+ * Sign convention (inverted "drag the scene" feel): drag right → azimuth
+ * decreases; drag up (screen) → elevation decreases. See `handleInput`; negate
+ * there to flip back to a "drag the camera" gesture.
  */
 export class OrbitCamera {
   readonly camera: PerspectiveCamera;
@@ -61,8 +61,10 @@ export class OrbitCamera {
     const t = input.touches[0];
     if (t.dx === 0 && t.dy === 0) return false;
 
-    this.aziGoal += (t.dx / input.width) * this.xSpeed;
-    this.elevGoal += (t.dy / input.height) * this.ySpeed;
+    // Inverted drag: pull the scene with the cursor (drag right → scene/azimuth
+    // moves left, drag up → tilt down).
+    this.aziGoal -= (t.dx / input.width) * this.xSpeed;
+    this.elevGoal -= (t.dy / input.height) * this.ySpeed;
     this.elevGoal = MathUtils.clamp(this.elevGoal, this.yMin, this.yMax);
     return true;
   }
