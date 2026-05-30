@@ -26,6 +26,7 @@ import { ThumbnailRenderer } from "./scene/ThumbnailRenderer";
 import type { Color } from "three";
 
 const IDLE_DELAY_MS = 2500;
+const INTRO_FADE_MS = 400; // intro logo fade-out; keep the CSS transition in sync
 const GHOST_OPACITY = 0.22;
 const TAP_PX = 6; // movement under this (px) counts as a tap, not a drag
 
@@ -49,7 +50,7 @@ class App {
   private readonly raycaster = new THREE.Raycaster();
   private readonly toastEl: HTMLDivElement;
   private toastTimer = 0;
-  private readonly introEl: HTMLDivElement;
+  private introEl?: HTMLDivElement; // built lazily on first startIntro()
   private intro = false;
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
@@ -104,7 +105,6 @@ class App {
       onToggleShape: (active) => this.onToggleShape(active),
     });
     this.toastEl = this.makeToast();
-    this.introEl = this.makeIntro();
 
     this.gallery = new Gallery(this.container, {
       store: this.store,
@@ -154,7 +154,7 @@ class App {
       loadIndex: (i: number) => this.loadFlower(i),
       setView: (az: number, el: number) => {
         this.intro = false; // the harness controls the view directly
-        this.introEl.style.display = "none";
+        if (this.introEl) this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
       },
@@ -352,7 +352,7 @@ class App {
       // No z-index: a stacking context would isolate the logo's blend mode from
       // the canvas behind it. As a positioned element appended last, it still
       // paints on top of the (static) canvas.
-      transition: "opacity 0.4s",
+      transition: `opacity ${INTRO_FADE_MS}ms`,
     } as CSSStyleDeclaration);
     const logo = document.createElement("img");
     logo.src = `${import.meta.env.BASE_URL}images/helloflower.png`;
@@ -375,6 +375,7 @@ class App {
   /** Landing screen: black background, top-down spinning flower, logo overlay. */
   private startIntro(): void {
     this.intro = true;
+    this.introEl ??= this.makeIntro(); // build (and fetch the logo) on demand
     this.background.setColors(0x000000, 0x000000);
     this.panel.setVisible(false);
     this.introEl.style.display = "flex";
@@ -386,10 +387,11 @@ class App {
 
   /** Dismiss the intro: reveal the UI and tilt to the normal editing view. */
   private endIntro(): void {
-    if (!this.intro) return;
+    if (!this.intro || !this.introEl) return;
     this.intro = false;
-    this.introEl.style.opacity = "0";
-    window.setTimeout(() => (this.introEl.style.display = "none"), 400);
+    const el = this.introEl;
+    el.style.opacity = "0";
+    window.setTimeout(() => (el.style.display = "none"), INTRO_FADE_MS);
     this.background.setColors(0xffffff, 0xececf1);
     this.panel.setVisible(true);
     this.orbit.glideTo(this.orbit.azimuth, 14); // ease down to the 3/4 view
