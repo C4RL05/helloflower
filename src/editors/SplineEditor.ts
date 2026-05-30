@@ -24,7 +24,7 @@ import type { PointerInput } from "../input/PointerInput";
  * X is length along the petal, Y is curl, and **Z is the half-width** at that
  * point. So the handles trace one edge of the petal, and the TIP point keeps
  * z = 0 (zero width → pointed tip); we lock that during drag. The base point
- * (index 0) is fully locked at the root.
+ * (index 0) is fixed at the root, so it gets no handle.
  *
  * Handles (soft radial-gradient sprites, constant screen size) and the
  * marching-ants curve live in an un-mirrored scene group; their world
@@ -32,8 +32,8 @@ import type { PointerInput } from "../input/PointerInput";
  * back to control-point-local space through that same transform. Editing the
  * spline rebuilds the shared petal mesh, so all petals reshape together.
  */
-const HANDLE_PX = 16;
-const ACTIVE_PX = 22;
+const HANDLE_PX = 32;
+const ACTIVE_PX = 44;
 const DASH_COUNT = 26;
 const DASH_SPEED = 1.2;
 
@@ -81,18 +81,17 @@ export class SplineEditor {
     if (!corolla.referenceNode) return;
 
     const cps = corolla.data.controlPoints;
-    for (let i = 0; i < cps.length; i++) {
-      const locked = i === 0;
-      const tip = i === cps.length - 1;
+    // Skip index 0: the base point is fixed at the root, so a handle there would
+    // only imply a draggability it doesn't have.
+    for (let i = 1; i < cps.length; i++) {
       const mat = new SpriteMaterial({
         map: this.handleTex,
         depthTest: false,
         transparent: true,
-        opacity: locked ? 0.7 : 1,
       });
       const sprite = new Sprite(mat);
       sprite.renderOrder = 1000;
-      sprite.userData = { index: i, locked, tip };
+      sprite.userData = { index: i };
       this.group.add(sprite);
       this.handles.push(sprite);
     }
@@ -149,10 +148,10 @@ export class SplineEditor {
       for (const h of this.handles) h.updateWorldMatrix(true, false);
       this.raycaster.setFromCamera(ndc, this.camera);
       const hits = this.raycaster.intersectObjects(this.handles, false);
-      const hit = hits.find((h) => !h.object.userData.locked);
+      const hit = hits[0];
       if (hit) {
         this.dragging = hit.object.userData.index as number;
-        this.handles[this.dragging].getWorldPosition(this.tmp);
+        hit.object.getWorldPosition(this.tmp);
         this.camera.getWorldDirection(this.normal);
         this.dragPlane.setFromNormalAndCoplanarPoint(this.normal, this.tmp);
         return true;
@@ -166,9 +165,10 @@ export class SplineEditor {
       if (this.raycaster.ray.intersectPlane(this.dragPlane, this.hit)) {
         ref.updateWorldMatrix(true, false);
         const local = ref.worldToLocal(this.hit.clone());
-        const isTip = this.handles[this.dragging].userData.tip as boolean;
+        const cps = this.corolla.data.controlPoints;
+        const isTip = this.dragging === cps.length - 1;
         if (isTip) local.z = 0; // keep the tip on the petal axis (pointed)
-        this.corolla.data.controlPoints[this.dragging].copy(local);
+        cps[this.dragging].copy(local);
         this.corolla.updateShape();
         this.rebuildGeometry();
       }
@@ -225,15 +225,15 @@ export class SplineEditor {
     const ref = this.corolla.referenceNode;
     const cps = this.corolla.data.controlPoints;
     const vFov = (this.camera.fov * Math.PI) / 180;
-    for (let i = 0; i < this.handles.length; i++) {
-      const sprite = this.handles[i];
-      this.tmp.copy(cps[i]);
+    for (const sprite of this.handles) {
+      const index = sprite.userData.index as number;
+      this.tmp.copy(cps[index]);
       ref.localToWorld(this.tmp);
       sprite.position.copy(this.tmp);
 
       const d = this.camera.position.distanceTo(this.tmp);
       const worldPerPx = (2 * Math.tan(vFov / 2) * Math.max(d, 0.3)) / this.viewportHeight;
-      const px = this.dragging === i ? ACTIVE_PX : HANDLE_PX;
+      const px = this.dragging === index ? ACTIVE_PX : HANDLE_PX;
       const s = px * worldPerPx;
       sprite.scale.set(s, s, 1);
     }

@@ -33,12 +33,15 @@ const SLIDERS: Record<ParamName, SliderSpec> = {
 };
 
 const COLUMN_WIDTH = 74;
+// Rendered height of a card button (makeButton); the slider thumb matches it.
+const BUTTON_HEIGHT = 37;
 
 /**
  * The editing UI, styled to match the original's left control column:
  * `back`, a two-tone color swatch (main over secondary), `shape`, then
- * `petals/open/spin/sway/curve`. Tapping a param button reveals a bottom
- * slider; tapping the swatch opens the GradientSlider color picker, which
+ * `petals/open/spin/sway/curve`. Tapping a param button reveals a vertical
+ * slider (plus a `reset`) in the column; tapping the swatch opens the
+ * GradientSlider color picker, which
  * appears BELOW the column at full width. The picked position is shown with a
  * white/grey-bordered circle marker (on the gradient and in the active swatch
  * half). Only one sub-editor is open at a time.
@@ -60,16 +63,24 @@ export class ControlPanel {
   private readonly gradientMarker: HTMLDivElement;
   private picking = false;
 
-  // Bottom param slider
-  private readonly sliderBar: HTMLDivElement;
-  private readonly sliderLabel: HTMLSpanElement;
-  private readonly sliderValue: HTMLSpanElement;
+  // Param slider (vertical card in the column) + reset
+  private static sliderStyleInjected = false;
+  private readonly sliderCard: HTMLDivElement;
   private readonly sliderInput: HTMLInputElement;
+  private readonly resetBtn: HTMLButtonElement;
 
   private activeParam: ParamName | null = null;
   private activeColor = 0;
   private shapeActive = false;
   private values: Record<ParamName, number> = {
+    petals: 5,
+    open: 0,
+    spin: 0,
+    sway: 0,
+    curve: 0,
+  };
+  // Snapshot of `values` at load/select time; `reset` reverts the active param.
+  private defaults: Record<ParamName, number> = {
     petals: 5,
     open: 0,
     spin: 0,
@@ -130,11 +141,51 @@ export class ControlPanel {
     this.shapeBtn = this.makeButton("shape", () => this.toggleShape());
     col.appendChild(this.shapeBtn);
 
-    for (const name of Object.keys(SLIDERS) as ParamName[]) {
-      const btn = this.makeButton(name, () => this.toggleParam(name));
+    // Param buttons (petals → curve) grouped into a single card, separated by
+    // thin dividers, matching the original's stacked control box.
+    const paramGroup = document.createElement("div");
+    Object.assign(paramGroup.style, {
+      display: "flex",
+      flexDirection: "column",
+      borderRadius: "12px",
+      overflow: "hidden",
+      border: "1px solid rgba(0,0,0,0.25)",
+      background: "rgba(255,255,255,0.92)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+    (Object.keys(SLIDERS) as ParamName[]).forEach((name, i) => {
+      const btn = this.makeParamButton(name, i > 0, () => this.toggleParam(name));
       this.paramBtns.set(name, btn);
-      col.appendChild(btn);
-    }
+      paramGroup.appendChild(btn);
+    });
+    col.appendChild(paramGroup);
+
+    // Vertical param slider, shown in the column when a param is selected.
+    this.sliderCard = document.createElement("div");
+    Object.assign(this.sliderCard.style, {
+      display: "none",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "150px",
+      boxSizing: "border-box",
+      borderRadius: "12px",
+      border: "1px solid rgba(0,0,0,0.25)",
+      background: "rgba(255,255,255,0.92)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+    ControlPanel.injectSliderStyle();
+    this.sliderInput = document.createElement("input");
+    this.sliderInput.type = "range";
+    this.sliderInput.className = "hf-slider";
+    this.sliderInput.addEventListener("input", () => this.onSliderInput());
+    this.sliderCard.append(this.sliderInput);
+    col.appendChild(this.sliderCard);
+
+    // Reset just the active param to its loaded value.
+    this.resetBtn = this.makeButton("reset", () => this.resetParam());
+    this.resetBtn.style.display = "none";
+    col.appendChild(this.resetBtn);
 
     // Color picker BELOW the column, full column width.
     this.colorPop = document.createElement("div");
@@ -174,38 +225,6 @@ export class ControlPanel {
 
     parent.appendChild(col);
 
-    // Bottom param slider
-    this.sliderBar = document.createElement("div");
-    Object.assign(this.sliderBar.style, {
-      position: "absolute",
-      bottom: "20px",
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: "min(360px, 70%)",
-      display: "none",
-      pointerEvents: "auto",
-      alignItems: "center",
-      gap: "10px",
-      padding: "8px 14px",
-      borderRadius: "12px",
-      background: "rgba(255,255,255,0.85)",
-      border: "1px solid rgba(0,0,0,0.1)",
-      font: "13px system-ui, sans-serif",
-      color: "#6e6e6e",
-    } as CSSStyleDeclaration);
-    this.sliderBar.addEventListener("pointerdown", (e) => e.stopPropagation());
-    this.sliderLabel = document.createElement("span");
-    this.sliderLabel.style.minWidth = "46px";
-    this.sliderInput = document.createElement("input");
-    this.sliderInput.type = "range";
-    this.sliderInput.style.flex = "1";
-    this.sliderValue = document.createElement("span");
-    this.sliderValue.style.minWidth = "40px";
-    this.sliderValue.style.textAlign = "right";
-    this.sliderInput.addEventListener("input", () => this.onSliderInput());
-    this.sliderBar.append(this.sliderLabel, this.sliderInput, this.sliderValue);
-    parent.appendChild(this.sliderBar);
-
     // Bottom-right utility buttons: share the current flower + cycle built-ins.
     // (The original had a richer Share state; this is a minimal modernization.)
     const utils = document.createElement("div");
@@ -242,6 +261,7 @@ export class ControlPanel {
       sway: data.sway,
       curve: data.curve,
     };
+    this.defaults = { ...this.values };
     if (this.activeParam) this.loadSlider(this.activeParam);
   }
 
@@ -278,13 +298,15 @@ export class ControlPanel {
     this.activeParam = name;
     for (const [n, btn] of this.paramBtns) this.highlight(btn, n === name);
     this.loadSlider(name);
-    this.sliderBar.style.display = "flex";
+    this.sliderCard.style.display = "flex";
+    this.resetBtn.style.display = "";
   }
 
   private closeParam(): void {
     this.activeParam = null;
     for (const btn of this.paramBtns.values()) this.highlight(btn, false);
-    this.sliderBar.style.display = "none";
+    this.sliderCard.style.display = "none";
+    this.resetBtn.style.display = "none";
   }
 
   private loadSlider(name: ParamName): void {
@@ -293,8 +315,15 @@ export class ControlPanel {
     this.sliderInput.max = String(spec.max);
     this.sliderInput.step = String(spec.step);
     this.sliderInput.value = String(this.values[name]);
-    this.sliderLabel.textContent = name;
-    this.sliderValue.textContent = this.fmt(this.values[name], spec);
+  }
+
+  /** Revert just the active param to its loaded (snapshot) value. */
+  private resetParam(): void {
+    if (!this.activeParam) return;
+    const v = this.defaults[this.activeParam];
+    this.values[this.activeParam] = v;
+    this.sliderInput.value = String(v);
+    this.cb.onParam(this.activeParam, v);
   }
 
   private onSliderInput(): void {
@@ -304,7 +333,6 @@ export class ControlPanel {
       ? Math.round(+this.sliderInput.value)
       : +this.sliderInput.value;
     this.values[this.activeParam] = v;
-    this.sliderValue.textContent = this.fmt(v, spec);
     this.cb.onParam(this.activeParam, v);
   }
 
@@ -354,6 +382,39 @@ export class ControlPanel {
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
+  /** Inject the vertical-slider CSS once: no visible track, and a thumb styled
+   * exactly like a card button (white rounded rect, no text) that drags. */
+  private static injectSliderStyle(): void {
+    if (ControlPanel.sliderStyleInjected) return;
+    ControlPanel.sliderStyleInjected = true;
+    // Thumb is identical to a card button: full column width, same height and
+    // look (radius/border/background/shadow) as makeButton — just no text.
+    const thumb = `
+      box-sizing: border-box;
+      width: ${COLUMN_WIDTH}px; height: ${BUTTON_HEIGHT}px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid rgba(0,0,0,0.25);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      cursor: grab;`;
+    const style = document.createElement("style");
+    style.textContent = `
+      .hf-slider {
+        -webkit-appearance: none; appearance: none;
+        writing-mode: vertical-lr; direction: rtl; /* min at bottom, max at top */
+        /* Track runs 1px past the card top and bottom so the thumb's travel
+           extends 1px each way without changing the thumb or card size. */
+        width: ${COLUMN_WIDTH}px; height: calc(100% + 2px); flex: none;
+        margin: 0; padding: 0; background: transparent; cursor: pointer;
+      }
+      .hf-slider::-webkit-slider-runnable-track { background: transparent; border: 0; }
+      .hf-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;${thumb} }
+      .hf-slider::-moz-range-track { background: transparent; border: 0; }
+      .hf-slider::-moz-range-thumb {${thumb} }
+    `;
+    document.head.appendChild(style);
+  }
+
   private makeButton(label: string, onClick: () => void): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.textContent = label;
@@ -361,13 +422,37 @@ export class ControlPanel {
       width: `${COLUMN_WIDTH}px`,
       padding: "9px 0",
       borderRadius: "12px",
-      border: "1px solid rgba(0,0,0,0.07)",
+      border: "1px solid rgba(0,0,0,0.25)",
       background: "rgba(255,255,255,0.92)",
       color: "#6e6e6e",
       font: "13px system-ui, sans-serif",
       textAlign: "center",
       cursor: "pointer",
       boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  /** A param row inside the grouped card: borderless, with an optional top
+   * divider. The card supplies the rounded corners, border, and background. */
+  private makeParamButton(
+    label: string,
+    divider: boolean,
+    onClick: () => void,
+  ): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      width: "100%",
+      padding: "9px 0",
+      border: "0",
+      borderTop: divider ? "1px solid rgba(0,0,0,0.25)" : "0",
+      background: "transparent",
+      color: "#6e6e6e",
+      font: "13px system-ui, sans-serif",
+      textAlign: "center",
+      cursor: "pointer",
     } as CSSStyleDeclaration);
     btn.addEventListener("click", onClick);
     return btn;
@@ -409,7 +494,7 @@ export class ControlPanel {
   private highlight(btn: HTMLButtonElement, on: boolean): void {
     btn.style.background = on ? "#8c9099" : "rgba(255,255,255,0.92)";
     btn.style.color = on ? "#fff" : "#6e6e6e";
-    btn.style.borderColor = on ? "transparent" : "rgba(0,0,0,0.07)";
+    btn.style.borderColor = on ? "transparent" : "rgba(0,0,0,0.25)";
   }
 
   private paintSwatch(half: HTMLDivElement, color: Color): void {
@@ -417,10 +502,6 @@ export class ControlPanel {
     half.style.background = `rgb(${Math.round(c.r * 255)},${Math.round(
       c.g * 255,
     )},${Math.round(c.b * 255)})`;
-  }
-
-  private fmt(v: number, spec: SliderSpec): string {
-    return spec.int ? String(Math.round(v)) : v.toFixed(2);
   }
 }
 
