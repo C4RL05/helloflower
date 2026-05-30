@@ -1,0 +1,23 @@
+# The original Unity project is kept locally as read-only reference only.
+HelloFlower-Unity/
+
+# Reference screenshots / renders (local only)
+helloflower-images/
+
+# Node / build
+node_modules/
+dist/
+*.local
+.vite/
+
+# Playwright
+test-results/
+playwright-report/
+/blob-report/
+/.cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+{
+  "name": "helloflower",
+  "version": "0.1.0",
+  "description": "helloflower — a 3D flower creator. TypeScript + Three.js port of the 2011 Unity app.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tweenjs/tween.js": "^25.0.0",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/three": "^0.160.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vitest": "^1.5.0"
+  }
+}
