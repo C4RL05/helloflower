@@ -73,4 +73,19 @@ Original concept, art, and Unity app: **HelloEnjoy**. Web port built with
 
 ## License
 
-[MIT](LICENSE) © HelloEnjoy
+The **source code** in this repository is licensed under the
+[MIT License](LICENSE) © HelloEnjoy.
+
+### Trademarks & assets
+
+The MIT license covers the code only. It does **not** grant any rights to:
+
+- the **"helloflower" and "HelloEnjoy" names, logos, and branding**, which are
+  trademarks of HelloEnjoy; and
+- the original **artwork and design assets** (e.g. petal textures, the gradient
+  spectrum, and other graphics derived from the original app), which remain the
+  property of HelloEnjoy and are **not** licensed for reuse.
+
+You're welcome to use the code under the MIT terms, but please don't redistribute
+the HelloEnjoy branding or original art, or present derivative works in a way
+that implies endorsement by HelloEnjoy.
