@@ -3,6 +3,10 @@
 Project guide for working on **helloflower** — a TypeScript + Three.js port of the
 2011 Unity 3.5 iOS app by HelloEnjoy. Keep this file current as conventions change.
 
+This project is **self-documenting**: everything needed lives in the repo
+(this file + `docs/PORTING.md` + `README.md`). Don't depend on notes outside the
+repo; if you learn something durable, record it here or in `docs/`.
+
 ## What it is
 
 A browser flower studio: spline-shaped petals, painted per-corolla textures,
@@ -56,8 +60,9 @@ scripts/         dev/verification tools (PSD decode, scene extract, gradient com
 - `engine/` must not import DOM/three-scene/UI — only `three` + local `Mathf`.
 - Comments explain *why* (esp. faithfulness quirks), not *what*.
 - Commit messages end with: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
-- Don't commit/push unless asked. Repo: `github.com/C4RL05/helloflower`, branch `main`.
-  MIT license (code only; HelloEnjoy brand/art reserved — see README).
+- Don't commit/push unless asked. Repo: `github.com/C4RL05/helloflower`, branch `main`
+  (the user's existing GitHub creds work). `git push` is a network op — run it with the
+  sandbox disabled. MIT license (code only; HelloEnjoy brand/art reserved — see README).
 
 ## Faithfulness invariants (don't regress)
 
