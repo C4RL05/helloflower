@@ -30,7 +30,7 @@ export class OrbitCamera {
   ySpeed = 110; // deg per screen height dragged
   ease = 0.18;
   yMin = -25;
-  yMax = 85;
+  yMax = 88; // allow a near top-down view (used by the intro)
   distMin = 0.5;
   distMax = 40;
 
@@ -76,6 +76,12 @@ export class OrbitCamera {
       this.yMax,
     );
     this.apply();
+  }
+
+  /** Ease toward angles (sets goals only, so update() animates the transition). */
+  glideTo(azimuth: number, elevation: number): void {
+    this.aziGoal = azimuth;
+    this.elevGoal = MathUtils.clamp(elevation, this.yMin, this.yMax);
   }
 
   zoom(deltaY: number): void {

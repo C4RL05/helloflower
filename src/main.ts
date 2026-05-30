@@ -49,6 +49,8 @@ class App {
   private readonly raycaster = new THREE.Raycaster();
   private readonly toastEl: HTMLDivElement;
   private toastTimer = 0;
+  private readonly introEl: HTMLDivElement;
+  private intro = false;
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
   private readonly gallery: Gallery;
@@ -102,6 +104,7 @@ class App {
       onToggleShape: (active) => this.onToggleShape(active),
     });
     this.toastEl = this.makeToast();
+    this.introEl = this.makeIntro();
 
     this.gallery = new Gallery(this.container, {
       store: this.store,
@@ -128,7 +131,8 @@ class App {
       }
     });
 
-    // Open a shared flower if the URL carries one; otherwise the first built-in.
+    // Open a shared flower if the URL carries one (skip the intro); otherwise
+    // show the first built-in behind the intro logo.
     const shared = decodeFlowerFromLocation(
       window.location.hash,
       window.location.search,
@@ -137,6 +141,7 @@ class App {
       this.loadDescription(shared);
     } else {
       this.loadFlower(0);
+      this.startIntro();
     }
 
     window.addEventListener("resize", this.onResize);
@@ -148,6 +153,8 @@ class App {
       ready: true,
       loadIndex: (i: number) => this.loadFlower(i),
       setView: (az: number, el: number) => {
+        this.intro = false; // the harness controls the view directly
+        this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
       },
@@ -332,6 +339,57 @@ class App {
     this.lastInteraction = performance.now();
   }
 
+  /** Build the intro overlay: the helloflower logo, centered, click to start. */
+  private makeIntro(): HTMLDivElement {
+    const el = document.createElement("div");
+    Object.assign(el.style, {
+      position: "absolute",
+      inset: "0",
+      display: "none",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      zIndex: "30",
+      transition: "opacity 0.4s",
+    } as CSSStyleDeclaration);
+    const logo = document.createElement("img");
+    logo.src = `${import.meta.env.BASE_URL}images/helloflower.png`;
+    logo.draggable = false;
+    Object.assign(logo.style, {
+      width: "min(72%, 560px)",
+      height: "auto",
+      pointerEvents: "none",
+      userSelect: "none",
+    } as CSSStyleDeclaration);
+    el.appendChild(logo);
+    el.addEventListener("pointerdown", () => this.endIntro());
+    this.container.appendChild(el);
+    return el;
+  }
+
+  /** Landing screen: black background, top-down spinning flower, logo overlay. */
+  private startIntro(): void {
+    this.intro = true;
+    this.background.setColors(0x000000, 0x000000);
+    this.panel.setVisible(false);
+    this.introEl.style.display = "flex";
+    this.introEl.style.opacity = "1";
+    this.orbit.setAngles(0, 88); // top-down
+    this.autoSpin = true;
+    this.lastInteraction = 0; // start the idle rotation immediately
+  }
+
+  /** Dismiss the intro: reveal the UI and tilt to the normal editing view. */
+  private endIntro(): void {
+    if (!this.intro) return;
+    this.intro = false;
+    this.introEl.style.opacity = "0";
+    window.setTimeout(() => (this.introEl.style.display = "none"), 400);
+    this.background.setColors(0xffffff, 0xececf1);
+    this.panel.setVisible(true);
+    this.orbit.glideTo(this.orbit.azimuth, 14); // ease down to the 3/4 view
+  }
+
   private makeToast(): HTMLDivElement {
     const el = document.createElement("div");
     Object.assign(el.style, {
@@ -407,7 +465,9 @@ class App {
       this.trySelectAt(touch.x, touch.y);
     }
 
-    if (
+    if (this.intro) {
+      this.orbit.spinIdle(0.2); // spin the rose immediately under the logo
+    } else if (
       this.autoSpin &&
       !this.shapeMode &&
       now - this.lastInteraction > IDLE_DELAY_MS

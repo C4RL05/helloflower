@@ -51,6 +51,7 @@ export class ControlPanel {
   private readonly swatchMarkers: HTMLDivElement[] = [];
   private readonly shapeBtn: HTMLButtonElement;
   private readonly paramBtns = new Map<ParamName, HTMLButtonElement>();
+  private readonly uiRoot: HTMLDivElement;
 
   // Color picker (below the column)
   private readonly colorPop: HTMLDivElement;
@@ -79,6 +80,17 @@ export class ControlPanel {
   constructor(parent: HTMLElement, cb: ControlPanelCallbacks) {
     this.cb = cb;
 
+    // All panel UI lives in this root (so it can be shown/hidden as a unit).
+    // pointer-events:none lets canvas gestures pass through the empty areas.
+    this.uiRoot = document.createElement("div");
+    Object.assign(this.uiRoot.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+    } as CSSStyleDeclaration);
+    parent.appendChild(this.uiRoot);
+    parent = this.uiRoot;
+
     const col = document.createElement("div");
     Object.assign(col.style, {
       position: "absolute",
@@ -88,6 +100,7 @@ export class ControlPanel {
       flexDirection: "column",
       gap: "7px",
       width: `${COLUMN_WIDTH}px`,
+      pointerEvents: "auto",
     } as CSSStyleDeclaration);
     col.addEventListener("pointerdown", (e) => e.stopPropagation());
 
@@ -170,6 +183,7 @@ export class ControlPanel {
       transform: "translateX(-50%)",
       width: "min(360px, 70%)",
       display: "none",
+      pointerEvents: "auto",
       alignItems: "center",
       gap: "10px",
       padding: "8px 14px",
@@ -202,6 +216,7 @@ export class ControlPanel {
       display: "flex",
       gap: "7px",
       opacity: "0.75",
+      pointerEvents: "auto",
     } as CSSStyleDeclaration);
     utils.addEventListener("pointerdown", (e) => e.stopPropagation());
     utils.append(
@@ -210,6 +225,11 @@ export class ControlPanel {
       this.makeButton("✿ next", () => this.cb.onNextFlower()),
     );
     parent.appendChild(utils);
+  }
+
+  /** Show/hide the entire control UI (used by the intro screen). */
+  setVisible(visible: boolean): void {
+    this.uiRoot.style.display = visible ? "" : "none";
   }
 
   setCorolla(data: CorollaData): void {
