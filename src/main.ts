@@ -28,6 +28,7 @@ import type { Color } from "three";
 const IDLE_DELAY_MS = 2500;
 const INTRO_FADE_MS = 400; // intro logo fade-out; keep the CSS transition in sync
 const GHOST_OPACITY = 0.22;
+const SELECT_ALPHA = 0.5; // corolla opacity in the exploded select view
 const TAP_PX = 6; // movement under this (px) counts as a tap, not a drag
 
 /**
@@ -54,6 +55,7 @@ class App {
   private logoEl?: HTMLImageElement; // the logo inside introEl (faded via filter)
   private intro = false;
   private home = false; // home menu (black bg) between intro and editor
+  private select = false; // exploded petal-selection view between home and editor
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
   private readonly gallery: Gallery;
@@ -97,8 +99,10 @@ class App {
     this.editor.attach(this.scene);
 
     this.panel = new ControlPanel(this.container, {
-      onBack: () => this.enterHome(),
-      onEdit: () => this.enterEditor(),
+      onBack: () => this.enterSelect(), // editor back → petal selection
+      onHome: () => this.enterHome(), // select back → home
+      onEdit: () => this.enterSelect(), // home edit → petal selection
+      onSelectCorolla: (slot) => this.editCorolla(slot),
       onShare: () => this.share(),
       onGallery: () => this.gallery.open(),
       onColor: (index, color) => this.onColor(index, color),
@@ -159,6 +163,7 @@ class App {
       setView: (az: number, el: number) => {
         this.intro = false; // the harness controls the view directly
         this.home = false;
+        this.select = false;
         if (this.introEl) this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
@@ -211,7 +216,7 @@ class App {
     }
     this.flower = new Flower(description, DEFAULT_CONFIG);
     this.scene.add(this.flower.group);
-    this.applyGhosting();
+    this.updateCorollaAppearance();
     this.frameCamera();
     this.panel.setCorolla(this.flower.corollas[0].data);
   }
@@ -235,15 +240,17 @@ class App {
     }
   }
 
-  private selectCorolla(index: number): void {
-    if (index === this.selectedCorolla && !this.shapeMode) {
-      this.panel.setCorolla(this.flower.corollas[index].data);
-      return;
-    }
+  /** Pick a corolla (from a tapped petal or the bottom/middle/top buttons) and
+   * drop into the editor for it. */
+  private editPetal(index: number): void {
     this.selectedCorolla = index;
     this.panel.setCorolla(this.flower.corollas[index].data);
-    this.applyGhosting();
-    if (this.shapeMode) this.editor.enterFor(this.flower.corollas[index]);
+    this.enterEditor();
+  }
+
+  /** Bottom/middle/top button: slot 0/1/2 maps to a corolla via slotOrder. */
+  private editCorolla(slot: number): void {
+    this.editPetal(this.flower.slotOrder[slot] ?? slot);
   }
 
   private onColor(index: number, color: Color): void {
@@ -278,19 +285,29 @@ class App {
     this.shapeMode = active;
     if (active) this.editor.enterFor(this.flower.corollas[this.selectedCorolla]);
     else this.editor.exit();
-    this.applyGhosting();
+    this.updateCorollaAppearance();
   }
 
-  /** Ghost non-selected corollas while editing, like the original Select view. */
-  private applyGhosting(): void {
-    this.flower.corollas.forEach((c, i) => {
-      c.setOpacity(
-        this.shapeMode && i !== this.selectedCorolla ? GHOST_OPACITY : 1,
+  /**
+   * Drive each corolla's separation + opacity for the current mode: the select
+   * view explodes them apart and fades all to SELECT_ALPHA; otherwise they merge
+   * and only non-selected corollas ghost while shape-editing.
+   */
+  private updateCorollaAppearance(): void {
+    if (this.select) {
+      this.flower.setSeparated(true);
+      this.flower.corollas.forEach((c) => c.setOpacityGoal(SELECT_ALPHA));
+    } else {
+      this.flower.setSeparated(false);
+      this.flower.corollas.forEach((c, i) =>
+        c.setOpacityGoal(
+          this.shapeMode && i !== this.selectedCorolla ? GHOST_OPACITY : 1,
+        ),
       );
-    });
+    }
   }
 
-  /** Tap-select the corolla under the pointer (raycast its petals). */
+  /** Tap a petal (in the select view) to edit its corolla. */
   private trySelectAt(x: number, y: number): void {
     const ndc = new THREE.Vector2(
       (x / this.input.width) * 2 - 1,
@@ -303,7 +320,7 @@ class App {
     if (!hits.length) return;
     const group = hits[0].object.parent;
     const idx = this.flower.corollas.findIndex((c) => c.group === group);
-    if (idx >= 0) this.selectCorolla(idx);
+    if (idx >= 0) this.editPetal(idx);
   }
 
   /** Thumbnail of the current flower (reparented to the thumbnailer, then back). */
@@ -408,20 +425,42 @@ class App {
    * Reached from the intro logo and from the editor's `back` button. */
   private enterHome(): void {
     this.home = true;
+    this.select = false;
     this.background.setColors(0x000000, 0x000000);
     this.panel.setVisible(true);
     this.panel.showHome();
+    this.updateCorollaAppearance(); // merge the corollas back, opaque
     this.orbit.glideTo(this.orbit.azimuth, 88); // ease back to top-down
     this.autoSpin = true;
     this.lastInteraction = 0; // keep the idle rotation running
   }
 
+  /** Petal selection: white background, corollas exploded apart + semi-
+   * transparent, with bottom/middle/top + back. Reached from home's `edit` and
+   * the editor's `back`. Tapping a petal (or a button) opens the editor. */
+  private enterSelect(): void {
+    this.home = false;
+    this.select = true;
+    if (this.shapeMode) this.onToggleShape(false); // leave shape mode first
+    this.panel.setShapeActive(false);
+    this.background.setColors(0xffffff, 0xececf1);
+    this.panel.setVisible(true);
+    this.panel.showSelect();
+    this.scene.updateMatrixWorld(true); // separation reads corolla bounds
+    this.updateCorollaAppearance(); // explode apart + fade to SELECT_ALPHA
+    this.orbit.glideTo(this.orbit.azimuth, 14); // ease to the 3/4 view
+    this.autoSpin = false;
+  }
+
   /** Enter the flower editor: white background, full controls, 3/4 view. */
   private enterEditor(): void {
     this.home = false;
+    this.select = false;
     this.background.setColors(0xffffff, 0xececf1);
     this.panel.showEditor();
+    this.updateCorollaAppearance(); // merge the corollas back together
     this.orbit.glideTo(this.orbit.azimuth, 14); // ease down to the 3/4 view
+    this.autoSpin = false;
   }
 
   private makeToast(): HTMLDivElement {
@@ -504,7 +543,7 @@ class App {
       touch.phase === "Ended" &&
       !this.gestureConsumed &&
       this.maxMove < TAP_PX &&
-      !this.home // no petal selection on the home menu
+      this.select // petals are only selectable in the exploded select view
     ) {
       this.trySelectAt(touch.x, touch.y);
     }
@@ -522,6 +561,7 @@ class App {
       this.editor.update(dt, this.container.clientHeight);
     }
 
+    this.flower.update(); // ease corolla separation + opacity (select view)
     this.orbit.update();
     this.lighting.update(this.camera, this.orbit.target);
 

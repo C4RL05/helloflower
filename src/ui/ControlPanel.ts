@@ -6,9 +6,14 @@ import { paintGradient } from "./gradientTexture";
 export type ParamName = "petals" | "open" | "spin" | "sway" | "curve";
 
 export interface ControlPanelCallbacks {
+  /** Editor `back` → return to the petal-selection view. */
   onBack(): void;
-  /** Leave the home menu and enter the flower editor. */
+  /** Selection-view `back` → return to the home menu. */
+  onHome(): void;
+  /** Home `edit` → enter the petal-selection view. */
   onEdit(): void;
+  /** Selection-view bottom/middle/top (slot 0/1/2) → edit that corolla. */
+  onSelectCorolla(slot: number): void;
   onShare(): void;
   onGallery(): void;
   /** index 0 (main) / 1 (secondary); color is the picked [0,1] color. */
@@ -58,6 +63,8 @@ export class ControlPanel {
   private readonly uiRoot: HTMLDivElement;
   private readonly col: HTMLDivElement; // editor column
   private readonly homeBar: HTMLDivElement; // home menu (over the black landing)
+  private readonly selectBar: HTMLDivElement; // petal-selection: back/top/middle/bottom
+  private readonly selectMsg: HTMLDivElement; // "select or touch petals to edit"
 
   // Color picker (below the column)
   private readonly colorPop: HTMLDivElement;
@@ -146,16 +153,7 @@ export class ControlPanel {
 
     // Param buttons (petals → curve) grouped into a single card, separated by
     // thin dividers, matching the original's stacked control box.
-    const paramGroup = document.createElement("div");
-    Object.assign(paramGroup.style, {
-      display: "flex",
-      flexDirection: "column",
-      borderRadius: "12px",
-      overflow: "hidden",
-      border: "1px solid rgba(0,0,0,0.25)",
-      background: "rgba(255,255,255,0.92)",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-    } as CSSStyleDeclaration);
+    const paramGroup = this.makeCardGroup();
     (Object.keys(SLIDERS) as ParamName[]).forEach((name, i) => {
       const btn = this.makeParamButton(name, i > 0, () => this.toggleParam(name));
       this.paramBtns.set(name, btn);
@@ -249,6 +247,48 @@ export class ControlPanel {
       this.makeButton("share", () => this.cb.onShare(), true),
     );
     parent.appendChild(this.homeBar);
+
+    // Petal-selection bar (white background): back + bottom/middle/top, which
+    // map to the exploded corollas (slot 0/1/2).
+    this.selectBar = document.createElement("div");
+    Object.assign(this.selectBar.style, {
+      position: "absolute",
+      top: "14px",
+      left: "14px",
+      display: "none",
+      flexDirection: "column",
+      gap: "7px",
+      width: `${COLUMN_WIDTH}px`,
+      pointerEvents: "auto",
+    } as CSSStyleDeclaration);
+    this.selectBar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    // top/middle/bottom grouped into one card (like the param buttons); back
+    // stays separate.
+    const corollaGroup = this.makeCardGroup();
+    (["top", "middle", "bottom"] as const).forEach((label, i) => {
+      const slot = 2 - i; // top→2, middle→1, bottom→0
+      corollaGroup.appendChild(
+        this.makeParamButton(label, i > 0, () => this.cb.onSelectCorolla(slot)),
+      );
+    });
+    this.selectBar.append(this.makeButton("back", () => this.cb.onHome()));
+    this.selectBar.appendChild(corollaGroup);
+    parent.appendChild(this.selectBar);
+
+    this.selectMsg = document.createElement("div");
+    this.selectMsg.textContent = "select or touch petals to edit";
+    Object.assign(this.selectMsg.style, {
+      position: "absolute",
+      bottom: "24px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      display: "none",
+      color: "rgba(0,0,0,0.4)",
+      font: "13px system-ui, sans-serif",
+      whiteSpace: "nowrap",
+      pointerEvents: "none",
+    } as CSSStyleDeclaration);
+    parent.appendChild(this.selectMsg);
   }
 
   /** Show/hide the entire control UI (used by the intro screen). */
@@ -256,17 +296,31 @@ export class ControlPanel {
     this.uiRoot.style.display = visible ? "" : "none";
   }
 
-  /** Home menu: show the reversed edit/gallery/share bar, hide the editor. */
+  /** Home menu: show the reversed edit/gallery/share bar, hide the rest. */
   showHome(): void {
     this.closeColor();
     this.closeParam();
     this.homeBar.style.display = "flex";
     this.col.style.display = "none";
+    this.selectBar.style.display = "none";
+    this.selectMsg.style.display = "none";
   }
 
-  /** Editor: show the editing column, hide the home menu. */
+  /** Petal selection: show back/bottom/middle/top + the prompt; hide the rest. */
+  showSelect(): void {
+    this.closeColor();
+    this.closeParam();
+    this.homeBar.style.display = "none";
+    this.col.style.display = "none";
+    this.selectBar.style.display = "flex";
+    this.selectMsg.style.display = "block";
+  }
+
+  /** Editor: show the editing column, hide the home/selection UI. */
   showEditor(): void {
     this.homeBar.style.display = "none";
+    this.selectBar.style.display = "none";
+    this.selectMsg.style.display = "none";
     this.col.style.display = "flex";
   }
 
@@ -457,6 +511,22 @@ export class ControlPanel {
     } as CSSStyleDeclaration);
     btn.addEventListener("click", onClick);
     return btn;
+  }
+
+  /** A rounded card that stacks borderless rows (made with makeParamButton)
+   * separated by thin dividers — used for the params and the corolla buttons. */
+  private makeCardGroup(): HTMLDivElement {
+    const group = document.createElement("div");
+    Object.assign(group.style, {
+      display: "flex",
+      flexDirection: "column",
+      borderRadius: "12px",
+      overflow: "hidden",
+      border: "1px solid rgba(0,0,0,0.25)",
+      background: "rgba(255,255,255,0.92)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+    return group;
   }
 
   /** A param row inside the grouped card: borderless, with an optional top

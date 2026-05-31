@@ -1,4 +1,12 @@
-import { DoubleSide, Euler, Group, Mesh, MeshBasicMaterial, MathUtils } from "three";
+import {
+  DoubleSide,
+  Euler,
+  FrontSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MathUtils,
+} from "three";
 import type { Color } from "three";
 import { Petal } from "../engine/geometry/Petal";
 import { PetalPainter } from "../engine/paint/PetalPainter";
@@ -159,10 +167,50 @@ export class Corolla {
     for (const m of this.meshes) m.material = mat;
   }
 
-  /** Fade this corolla (1 = opaque) — used to ghost unselected corollas. */
+  /** Fade this corolla (1 = opaque) — used for the exploded select view and to
+   * ghost unselected corollas. */
   setOpacity(alpha: number): void {
+    const transparent = alpha < 1;
     this.material.uniforms.uOpacity.value = alpha;
-    this.material.transparent = alpha < 1;
-    this.material.depthWrite = alpha >= 1;
+    this.material.transparent = transparent;
+    this.material.depthWrite = !transparent;
+    // Cull back faces while faded, like the original alpha shader (Cull Back).
+    // The petal geometry is already double-sided, so DoubleSide would composite
+    // ~twice the layers and read far more opaque than the 0.5 alpha implies.
+    this.material.side = transparent ? FrontSide : DoubleSide;
+  }
+
+  // ── exploded "select" view animation ──────────────────────────────────────
+  private sepGoal = 0;
+  private sepNow = 0;
+  private opacityGoal = 1;
+  private opacityNow = 1;
+
+  /** Target Y offset for the separated select view (0 = merged). */
+  setSeparationGoal(y: number): void {
+    this.sepGoal = y;
+  }
+
+  /** Target opacity (1 = opaque); eased in update(). */
+  setOpacityGoal(alpha: number): void {
+    this.opacityGoal = alpha;
+  }
+
+  /** Ease separation + opacity toward their goals; call once per frame. */
+  update(): void {
+    const ease = 0.16;
+    this.sepNow +=
+      Math.abs(this.sepGoal - this.sepNow) > 1e-4
+        ? (this.sepGoal - this.sepNow) * ease
+        : this.sepGoal - this.sepNow;
+    this.group.position.y = this.sepNow;
+
+    if (this.opacityNow !== this.opacityGoal) {
+      this.opacityNow +=
+        Math.abs(this.opacityGoal - this.opacityNow) > 1e-3
+          ? (this.opacityGoal - this.opacityNow) * ease
+          : this.opacityGoal - this.opacityNow;
+      this.setOpacity(this.opacityNow);
+    }
   }
 }

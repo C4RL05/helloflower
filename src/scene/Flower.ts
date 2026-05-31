@@ -1,4 +1,4 @@
-import { Box3, Group } from "three";
+import { Box3, Group, Vector3 } from "three";
 import { FlowerData } from "../engine/serialization/FlowerData";
 import { NaturalCubicSpline } from "../engine/math/NaturalCubicSpline";
 import type { FlowerConfig } from "../engine/model/FlowerConfig";
@@ -49,6 +49,44 @@ export class Flower {
   computeBounds(): Box3 {
     return new Box3().setFromObject(this.group);
   }
+
+  /** Corolla indices sorted bottom→top; set by setSeparated(true). Used to map
+   * the select view's bottom/middle/top buttons to actual corollas. */
+  slotOrder: number[] = [];
+
+  /**
+   * Spread the corollas apart vertically (the original's "select" view) or merge
+   * them back (on=false). Ported from Unity Flower.SeparateCorollas: sort by
+   * center, then offset evenly across [-SEPARATION, +SEPARATION]. Requires world
+   * matrices to be current when separating.
+   */
+  setSeparated(on: boolean): void {
+    if (!on) {
+      for (const c of this.corollas) c.setSeparationGoal(0);
+      return;
+    }
+    const tmp = new Vector3();
+    const centerY = this.corollas.map(
+      (c) =>
+        new Box3().setFromObject(c.group).getCenter(tmp).y - c.group.position.y,
+    );
+    this.slotOrder = this.corollas
+      .map((_, i) => i)
+      .sort((a, b) => centerY[a] - centerY[b]);
+
+    const max = this.slotOrder.length - 1;
+    this.slotOrder.forEach((corollaIndex, slot) => {
+      const y = max > 0 ? ((2 * slot) / max - 1) * Flower.SEPARATION : 0;
+      this.corollas[corollaIndex].setSeparationGoal(y);
+    });
+  }
+
+  /** Ease each corolla's separation + opacity toward its goal (per frame). */
+  update(): void {
+    for (const c of this.corollas) c.update();
+  }
+
+  private static readonly SEPARATION = 0.4; // Unity Flower.cs separation offset
 
   get name(): string {
     return this.data.flowerName;
