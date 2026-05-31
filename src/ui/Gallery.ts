@@ -14,37 +14,31 @@ export interface GalleryDeps {
   toast(message: string): void;
 }
 
-const PAGE_SIZE = 12; // 4 columns × 3 rows
 const COLS = 4;
-
-interface Page {
-  type: "preset" | "user";
-  presets?: string[]; // descriptions
-  users?: SavedFlower[];
-}
+const ROWS = 6;
+const SLOTS = COLS * ROWS; // single 4×6 page
+const HOLD_MS = 3000; // press-and-hold duration to delete a saved flower
 
 /**
- * Paged gallery overlay. Page 1 holds the read-only preset flowers; subsequent
- * pages hold the user's saved creations. Every page is padded to a full grid
- * with empty slots — on user pages an empty slot saves the current flower; a new
- * page is added once a page fills. Matches the original's black grid + "back".
+ * Single-page gallery overlay (4×6 grid) on black, matching the home menu's
+ * button language. The read-only preset flowers come first; every remaining
+ * slot belongs to the user — filled by their saved creations, then empty
+ * "+ save" slots that store the current flower. Loading a flower returns to the
+ * home screen.
  */
 export class Gallery {
   private readonly deps: GalleryDeps;
   private readonly root: HTMLDivElement;
   private readonly grid: HTMLDivElement;
-  private readonly pageLabel: HTMLSpanElement;
-  private readonly prevBtn: HTMLButtonElement;
-  private readonly nextBtn: HTMLButtonElement;
 
+  private static holdStyleInjected = false;
   private readonly presetThumbs = new Map<string, string>();
   private presetReady = false;
-  private pages: Page[] = [];
-  private current = 0;
   private open_ = false;
 
   constructor(parent: HTMLElement, deps: GalleryDeps) {
     this.deps = deps;
+    Gallery.injectHoldStyle();
 
     this.root = document.createElement("div");
     Object.assign(this.root.style, {
@@ -64,6 +58,8 @@ export class Gallery {
       top: "14px",
       left: "14px",
       zIndex: "1",
+      width: "74px", // match the home/editor button bar
+      padding: "9px 0",
     } as CSSStyleDeclaration);
     this.root.appendChild(back);
 
@@ -72,10 +68,9 @@ export class Gallery {
       flex: "1",
       display: "grid",
       gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-      gridAutoRows: "1fr",
-      gap: "16px",
-      alignContent: "center",
-      padding: "64px 24px 16px",
+      gap: "12px",
+      alignContent: "start",
+      padding: "64px 24px 12px",
       maxWidth: "560px",
       width: "100%",
       margin: "0 auto",
@@ -84,32 +79,15 @@ export class Gallery {
     } as CSSStyleDeclaration);
     this.root.appendChild(this.grid);
 
-    // Footer: pager + hint
-    const footer = document.createElement("div");
-    Object.assign(footer.style, {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "6px",
+    const hint = document.createElement("div");
+    hint.textContent =
+      "touch slot to load · empty slot to save · hold to delete";
+    Object.assign(hint.style, {
+      textAlign: "center",
+      opacity: "0.5",
       padding: "10px 0 16px",
     } as CSSStyleDeclaration);
-    const pager = document.createElement("div");
-    Object.assign(pager.style, {
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-    } as CSSStyleDeclaration);
-    this.prevBtn = this.makeButton("‹", () => this.go(-1));
-    this.nextBtn = this.makeButton("›", () => this.go(1));
-    this.pageLabel = document.createElement("span");
-    this.pageLabel.style.minWidth = "120px";
-    this.pageLabel.style.textAlign = "center";
-    pager.append(this.prevBtn, this.pageLabel, this.nextBtn);
-    const hint = document.createElement("div");
-    hint.textContent = "touch slot to load · empty slot to save";
-    hint.style.opacity = "0.5";
-    footer.append(pager, hint);
-    this.root.appendChild(footer);
+    this.root.appendChild(hint);
 
     parent.appendChild(this.root);
   }
@@ -127,7 +105,6 @@ export class Gallery {
       }
       this.presetReady = true;
     }
-    this.current = 0;
     await this.rebuild();
   }
 
@@ -136,7 +113,9 @@ export class Gallery {
     this.root.style.display = "none";
   }
 
-  private async rebuild(keepPage = false): Promise<void> {
+  /** Rebuild the single 4×6 page: presets first, then the user's saved flowers,
+   * then empty "+ save" slots filling the rest. */
+  private async rebuild(): Promise<void> {
     let users: SavedFlower[] = [];
     try {
       users = await this.deps.store.list();
@@ -144,62 +123,33 @@ export class Gallery {
       this.deps.toast("gallery storage unavailable");
     }
 
-    const pages: Page[] = [];
-    for (let i = 0; i < PRESET_FLOWERS.length; i += PAGE_SIZE) {
-      pages.push({ type: "preset", presets: PRESET_FLOWERS.slice(i, i + PAGE_SIZE) });
-    }
-    const presetPageCount = pages.length;
-    if (users.length === 0) {
-      pages.push({ type: "user", users: [] });
-    } else {
-      for (let i = 0; i < users.length; i += PAGE_SIZE) {
-        pages.push({ type: "user", users: users.slice(i, i + PAGE_SIZE) });
-      }
-      // Ensure a trailing empty slot exists to save into.
-      if (users.length % PAGE_SIZE === 0) pages.push({ type: "user", users: [] });
-    }
-
-    this.pages = pages;
-    if (!keepPage) this.current = presetPageCount; // open on the user's pages
-    this.current = Math.min(Math.max(0, this.current), pages.length - 1);
-    this.render();
-  }
-
-  private render(): void {
-    const page = this.pages[this.current];
-    this.grid.replaceChildren();
-
-    for (let i = 0; i < PAGE_SIZE; i++) {
-      if (page.type === "preset") {
-        const desc = page.presets?.[i];
-        this.grid.appendChild(
-          desc ? this.presetSlot(desc) : this.emptySlot(false),
-        );
+    // Place each saved flower at its stored slot (leaving gaps). Legacy records
+    // that predate slots — or any out of range — backfill the leftover slots.
+    const userSlots = Math.max(0, SLOTS - PRESET_FLOWERS.length);
+    const bySlot = new Map<number, SavedFlower>();
+    const unslotted: SavedFlower[] = [];
+    for (const u of users) {
+      if (u.slot >= 0 && u.slot < userSlots && !bySlot.has(u.slot)) {
+        bySlot.set(u.slot, u);
       } else {
-        const item = page.users?.[i];
-        this.grid.appendChild(item ? this.userSlot(item) : this.emptySlot(true));
+        unslotted.push(u);
       }
     }
 
-    const label = page.type === "preset" ? "presets" : "my flowers";
-    this.pageLabel.textContent = `${label} — ${this.current + 1} / ${this.pages.length}`;
-    this.prevBtn.style.visibility = this.current > 0 ? "visible" : "hidden";
-    this.nextBtn.style.visibility =
-      this.current < this.pages.length - 1 ? "visible" : "hidden";
-  }
-
-  private go(delta: number): void {
-    this.current = Math.min(
-      Math.max(0, this.current + delta),
-      this.pages.length - 1,
+    const cells: HTMLElement[] = PRESET_FLOWERS.slice(0, SLOTS).map((desc) =>
+      this.presetSlot(desc),
     );
-    this.render();
+    for (let s = 0; s < userSlots; s++) {
+      const item = bySlot.get(s) ?? unslotted.shift();
+      cells.push(item ? this.userSlot(item) : this.emptySlot(s));
+    }
+
+    this.grid.replaceChildren(...cells);
   }
 
   private presetSlot(description: string): HTMLElement {
     const cell = this.makeCell();
     cell.appendChild(this.thumb(this.presetThumbs.get(description)!));
-    cell.appendChild(this.badge("preset"));
     cell.addEventListener("click", () => {
       this.deps.onLoad(description);
       this.close();
@@ -209,56 +159,62 @@ export class Gallery {
 
   private userSlot(item: SavedFlower): HTMLElement {
     const cell = this.makeCell();
+    cell.style.touchAction = "none"; // so a hold isn't stolen by scrolling
     cell.appendChild(this.thumb(item.thumbnail));
-    cell.addEventListener("click", () => {
+
+    // Press-and-hold (HOLD_MS) to delete; a white pie-timer fills over the
+    // flower while held. A short press just loads the flower.
+    const ring = document.createElement("div");
+    ring.className = "hf-hold-ring";
+    cell.appendChild(ring);
+
+    let holdTimer = 0;
+    const cancel = () => {
+      if (!holdTimer) return;
+      clearTimeout(holdTimer);
+      holdTimer = 0;
+      ring.classList.remove("run");
+    };
+    cell.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      ring.classList.remove("run");
+      void ring.offsetWidth; // restart the fill animation
+      ring.classList.add("run");
+      holdTimer = window.setTimeout(async () => {
+        holdTimer = 0;
+        ring.classList.remove("run");
+        await this.deps.store.delete(item.id);
+        await this.rebuild();
+      }, HOLD_MS);
+    });
+    cell.addEventListener("pointerup", () => {
+      if (!holdTimer) return; // hold completed → already deleting
+      cancel(); // released early → treat as a tap
       this.deps.onLoad(item.description);
       this.close();
     });
-
-    const del = document.createElement("button");
-    del.textContent = "×";
-    Object.assign(del.style, {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      width: "20px",
-      height: "20px",
-      borderRadius: "50%",
-      border: "none",
-      background: "rgba(0,0,0,0.55)",
-      color: "#fff",
-      cursor: "pointer",
-      lineHeight: "1",
-    } as CSSStyleDeclaration);
-    del.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      await this.deps.store.delete(item.id);
-      await this.rebuild(true);
-    });
-    cell.appendChild(del);
+    cell.addEventListener("pointerleave", cancel);
+    cell.addEventListener("pointercancel", cancel);
     return cell;
   }
 
-  private emptySlot(saveable: boolean): HTMLElement {
+  /** An empty user slot: a bare "+" that saves the current flower into this
+   * exact slot when tapped. */
+  private emptySlot(slot: number): HTMLElement {
     const cell = this.makeCell();
-    cell.style.border = "1px dashed rgba(255,255,255,0.18)";
-    if (saveable) {
-      cell.style.color = "rgba(255,255,255,0.6)";
-      cell.style.fontSize = "12px";
-      cell.textContent = "+ save";
-      cell.addEventListener("click", async () => {
-        try {
-          const thumb = this.deps.captureCurrent();
-          await this.deps.store.save(this.deps.getDescription(), thumb);
-          this.deps.toast("flower saved");
-          await this.rebuild(); // jumps to the user pages (newest first)
-        } catch {
-          this.deps.toast("save failed");
-        }
-      });
-    } else {
-      cell.style.cursor = "default";
-    }
+    cell.style.color = "rgba(255,255,255,0.4)";
+    cell.style.fontSize = "28px";
+    cell.textContent = "+";
+    cell.addEventListener("click", async () => {
+      try {
+        const thumb = this.deps.captureCurrent();
+        await this.deps.store.save(this.deps.getDescription(), thumb, slot);
+        this.deps.toast("flower saved");
+        await this.rebuild();
+      } catch {
+        this.deps.toast("save failed");
+      }
+    });
     return cell;
   }
 
@@ -291,33 +247,45 @@ export class Gallery {
     return img;
   }
 
-  private badge(text: string): HTMLDivElement {
-    const b = document.createElement("div");
-    b.textContent = text;
-    Object.assign(b.style, {
-      position: "absolute",
-      bottom: "3px",
-      left: "3px",
-      padding: "1px 5px",
-      borderRadius: "6px",
-      background: "rgba(0,0,0,0.5)",
-      color: "rgba(255,255,255,0.8)",
-      fontSize: "9px",
-      pointerEvents: "none",
-    } as CSSStyleDeclaration);
-    return b;
+  /** Inject the press-and-hold timer styles once: a white (0.25) conic "pie"
+   * that fills over HOLD_MS, overlaid on the flower being held. */
+  private static injectHoldStyle(): void {
+    if (Gallery.holdStyleInjected) return;
+    Gallery.holdStyleInjected = true;
+    const style = document.createElement("style");
+    style.textContent = `
+      @property --hf-hold { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+      @keyframes hf-hold-fill { from { --hf-hold: 0deg; } to { --hf-hold: 360deg; } }
+      .hf-hold-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        pointer-events: none;
+        opacity: 0;
+        background: conic-gradient(rgba(255,255,255,0.25) var(--hf-hold), transparent 0deg);
+      }
+      .hf-hold-ring.run {
+        opacity: 1;
+        animation: hf-hold-fill ${HOLD_MS}ms linear forwards;
+      }
+    `;
+    document.head.appendChild(style);
   }
 
+  // Reversed card button, matching the home menu's button language (light on
+  // dark, since the gallery sits on a black background).
   private makeButton(label: string, onClick: () => void): HTMLButtonElement {
     const btn = document.createElement("button");
     btn.textContent = label;
     Object.assign(btn.style, {
       minWidth: "44px",
-      padding: "8px 12px",
+      padding: "9px 14px",
       borderRadius: "12px",
-      border: "1px solid rgba(255,255,255,0.18)",
-      background: "rgba(255,255,255,0.06)",
-      color: "#ddd",
+      border: "1px solid rgba(255,255,255,0.25)",
+      background: "rgba(255,255,255,0.1)",
+      color: "#f2f2f4",
+      font: "13px system-ui, sans-serif",
+      textAlign: "center",
       cursor: "pointer",
     } as CSSStyleDeclaration);
     btn.addEventListener("click", onClick);

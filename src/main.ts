@@ -109,7 +109,10 @@ class App {
 
     this.gallery = new Gallery(this.container, {
       store: this.store,
-      onLoad: (description) => this.loadDescription(description),
+      onLoad: (description) => {
+        this.loadDescription(description);
+        this.enterHome(); // gallery loads return to the home screen
+      },
       getDescription: () => this.flower.toDescription(),
       captureCurrent: () => this.captureCurrent(),
       captureDescription: (desc) => this.captureDescription(desc),
@@ -423,15 +426,24 @@ class App {
 
   private makeToast(): HTMLDivElement {
     const el = document.createElement("div");
+    // Styled like a (reversed) card button: same 12px corner, 13px font, and
+    // 37px pill height (ControlPanel BUTTON_HEIGHT); light-on-dark to match the
+    // home/gallery buttons it appears over. Width hugs the text.
     Object.assign(el.style, {
       position: "absolute",
       bottom: "70px",
       left: "50%",
       transform: "translateX(-50%)",
-      padding: "8px 16px",
-      borderRadius: "20px",
-      background: "rgba(40,44,52,0.9)",
-      color: "#fff",
+      height: "37px",
+      display: "flex",
+      alignItems: "center",
+      padding: "0 14px",
+      boxSizing: "border-box",
+      whiteSpace: "nowrap",
+      borderRadius: "12px",
+      border: "1px solid rgba(255,255,255,0.25)",
+      background: "rgba(255,255,255,0.1)",
+      color: "#f2f2f4",
       font: "13px system-ui, sans-serif",
       pointerEvents: "none",
       opacity: "0",

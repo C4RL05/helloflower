@@ -8,6 +8,7 @@ export interface SavedFlower {
   description: string;
   thumbnail: string; // PNG data URL
   createdAt: number;
+  slot: number; // gallery grid position (user-slot index, after the presets)
 }
 
 const DB_NAME = "helloflower";
@@ -44,14 +45,18 @@ export class FlowerStore {
     }
   }
 
-  async save(description: string, thumbnail: string): Promise<number> {
+  async save(
+    description: string,
+    thumbnail: string,
+    slot: number,
+  ): Promise<number> {
     const db = await openDb();
     try {
       return await new Promise<number>((resolve, reject) => {
         const req = db
           .transaction(STORE, "readwrite")
           .objectStore(STORE)
-          .add({ description, thumbnail, createdAt: Date.now() });
+          .add({ description, thumbnail, createdAt: Date.now(), slot });
         req.onsuccess = () => resolve(req.result as number);
         req.onerror = () => reject(req.error);
       });
