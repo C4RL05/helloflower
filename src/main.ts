@@ -27,7 +27,7 @@ import type { Color } from "three";
 
 const IDLE_DELAY_MS = 2500;
 const INTRO_FADE_MS = 400; // intro logo fade-out; keep the CSS transition in sync
-const GHOST_OPACITY = 0.22;
+const UNSELECTED_ALPHA = 0.15; // editor: faded non-selected corollas (Unity unselectedPetalAlpha)
 const SELECT_ALPHA = 0.5; // corolla opacity in the exploded select view
 const TAP_PX = 6; // movement under this (px) counts as a tap, not a drag
 
@@ -56,6 +56,8 @@ class App {
   private intro = false;
   private home = false; // home menu (black bg) between intro and editor
   private select = false; // exploded petal-selection view between home and editor
+  private editing = false; // in the flower editor (fades non-selected corollas)
+  private corollasSolid = false; // editor: all corollas opaque while drag-rotating
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
   private readonly gallery: Gallery;
@@ -164,6 +166,7 @@ class App {
         this.intro = false; // the harness controls the view directly
         this.home = false;
         this.select = false;
+        this.editing = false;
         if (this.introEl) this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
@@ -297,14 +300,16 @@ class App {
     if (this.select) {
       this.flower.setSeparated(true);
       this.flower.corollas.forEach((c) => c.setOpacityGoal(SELECT_ALPHA));
-    } else {
-      this.flower.setSeparated(false);
-      this.flower.corollas.forEach((c, i) =>
-        c.setOpacityGoal(
-          this.shapeMode && i !== this.selectedCorolla ? GHOST_OPACITY : 1,
-        ),
-      );
+      return;
     }
+    this.flower.setSeparated(false);
+    // In the editor (EditPetal/EditShape) the non-selected corollas fade to
+    // UNSELECTED_ALPHA; the intro/home/shared views stay solid. While drag-
+    // rotating the camera (corollasSolid), all corollas go opaque too.
+    const fade = this.editing && !this.corollasSolid;
+    this.flower.corollas.forEach((c, i) =>
+      c.setOpacityGoal(fade && i !== this.selectedCorolla ? UNSELECTED_ALPHA : 1),
+    );
   }
 
   /** Tap a petal (in the select view) to edit its corolla. */
@@ -426,6 +431,7 @@ class App {
   private enterHome(): void {
     this.home = true;
     this.select = false;
+    this.editing = false;
     this.background.setColors(0x000000, 0x000000);
     this.panel.setVisible(true);
     this.panel.showHome();
@@ -441,6 +447,7 @@ class App {
   private enterSelect(): void {
     this.home = false;
     this.select = true;
+    this.editing = false;
     if (this.shapeMode) this.onToggleShape(false); // leave shape mode first
     this.panel.setShapeActive(false);
     this.background.setColors(0xffffff, 0xececf1);
@@ -456,6 +463,7 @@ class App {
   private enterEditor(): void {
     this.home = false;
     this.select = false;
+    this.editing = true;
     this.background.setColors(0xffffff, 0xececf1);
     this.panel.showEditor();
     this.updateCorollaAppearance(); // merge the corollas back together
@@ -536,6 +544,15 @@ class App {
       this.markInteraction();
     } else if (this.orbit.handleInput(this.input)) {
       this.markInteraction();
+    }
+
+    // Editor: a single-touch camera-rotation drag temporarily makes every
+    // corolla opaque (Unity CameraBehaviour); otherwise non-selected ones fade.
+    const dragging =
+      this.editing && !!touch && touch.phase !== "Ended" && !consumed;
+    if (dragging !== this.corollasSolid) {
+      this.corollasSolid = dragging;
+      this.updateCorollaAppearance();
     }
 
     if (

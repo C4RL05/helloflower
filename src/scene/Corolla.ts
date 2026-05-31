@@ -167,19 +167,6 @@ export class Corolla {
     for (const m of this.meshes) m.material = mat;
   }
 
-  /** Fade this corolla (1 = opaque) — used for the exploded select view and to
-   * ghost unselected corollas. */
-  setOpacity(alpha: number): void {
-    const transparent = alpha < 1;
-    this.material.uniforms.uOpacity.value = alpha;
-    this.material.transparent = transparent;
-    this.material.depthWrite = !transparent;
-    // Cull back faces while faded, like the original alpha shader (Cull Back).
-    // The petal geometry is already double-sided, so DoubleSide would composite
-    // ~twice the layers and read far more opaque than the 0.5 alpha implies.
-    this.material.side = transparent ? FrontSide : DoubleSide;
-  }
-
   // ── exploded "select" view animation ──────────────────────────────────────
   private sepGoal = 0;
   private sepNow = 0;
@@ -191,9 +178,23 @@ export class Corolla {
     this.sepGoal = y;
   }
 
-  /** Target opacity (1 = opaque); eased in update(). */
+  /**
+   * Target opacity (1 = opaque); eased in update(). The ZWrite/cull mode is
+   * switched to the DESTINATION here — at the start of the fade — rather than
+   * when the eased alpha finally reaches it: the lit (opaque) shader is double-
+   * sided with ZWrite on, the faded look is single-sided with ZWrite off (like
+   * the original alpha shader's Cull Back), and flipping that at the end of the
+   * fade pops visibly once the corolla is fully on screen. Switching up front,
+   * while it's still faint, hides the change.
+   */
   setOpacityGoal(alpha: number): void {
     this.opacityGoal = alpha;
+    const opaque = alpha >= 1;
+    this.material.depthWrite = opaque;
+    this.material.side = opaque ? DoubleSide : FrontSide;
+    // Blend whenever the current OR target opacity is < 1, so the fade renders
+    // even on the frame the eased value is still exactly 1.
+    this.material.transparent = this.opacityNow < 1 || alpha < 1;
   }
 
   /** Ease separation + opacity toward their goals; call once per frame. */
@@ -210,7 +211,11 @@ export class Corolla {
         Math.abs(this.opacityGoal - this.opacityNow) > 1e-3
           ? (this.opacityGoal - this.opacityNow) * ease
           : this.opacityGoal - this.opacityNow;
-      this.setOpacity(this.opacityNow);
+      this.material.uniforms.uOpacity.value = this.opacityNow;
+      // Stop blending once fully opaque (and at the target), so the final state
+      // matches the opaque shader exactly.
+      this.material.transparent =
+        this.opacityNow < 1 || this.opacityGoal < 1;
     }
   }
 }
