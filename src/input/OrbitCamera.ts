@@ -7,7 +7,7 @@ import type { PointerInput } from "./PointerInput";
  * Drag azimuth/elevation around a target at a fixed distance, with eased follow
  * toward the goal (the original's `CameraBehaviour` lerps toward xGoto/yGoto).
  * Speeds/clamps approximate the original; exact values are a calibration item.
- * Wheel zoom is a web modernization (original used pinch).
+ * Zoom is a web modernization: mouse wheel (desktop) + two-finger pinch (touch).
  *
  * Sign convention (inverted "drag the scene" feel): drag right → azimuth
  * decreases; drag up (screen) → elevation decreases. See `handleInput`; negate
@@ -25,6 +25,7 @@ export class OrbitCamera {
   private aziGoal = 0;
   private elevGoal = 14;
   private distGoal = 5;
+  private pinchPrev = 0; // previous two-finger spread (px); 0 = no active pinch
 
   xSpeed = 200; // deg per screen width dragged
   ySpeed = 110; // deg per screen height dragged
@@ -94,6 +95,27 @@ export class OrbitCamera {
       this.distMin,
       this.distMax,
     );
+  }
+
+  /** Two-finger pinch zoom (touch). Returns true while a pinch is active. */
+  pinch(input: PointerInput): boolean {
+    if (input.touchCount < 2) {
+      this.pinchPrev = 0;
+      return false;
+    }
+    const a = input.touches[0];
+    const b = input.touches[1];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    if (this.pinchPrev > 0 && dist > 0) {
+      // Fingers spreading (dist grows) → smaller orbit distance → zoom in.
+      this.distGoal = MathUtils.clamp(
+        this.distGoal * (this.pinchPrev / dist),
+        this.distMin,
+        this.distMax,
+      );
+    }
+    this.pinchPrev = dist;
+    return true;
   }
 
   /** Idle auto-rotation (used by the Watch/Home idle state). */

@@ -95,6 +95,9 @@ class App {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // gamma passthrough
     this.renderer.autoClear = false;
+    // Let pointer events drive all gestures (incl. two-finger pinch) instead of
+    // the browser's default touch scroll/zoom.
+    this.renderer.domElement.style.touchAction = "none";
     this.container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -599,7 +602,10 @@ class App {
       }
     }
 
-    const consumed = this.shapeMode && this.editor.handleInput(this.input);
+    // Two-finger pinch zoom (touch) takes priority over rotate / handle-drag.
+    const pinching = this.orbit.pinch(this.input);
+    const handleDrag = this.shapeMode && this.editor.handleInput(this.input);
+    const consumed = pinching || handleDrag;
     if (consumed) {
       this.gestureConsumed = true;
       this.markInteraction();
