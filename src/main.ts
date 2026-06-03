@@ -31,6 +31,14 @@ const UNSELECTED_ALPHA = 0.15; // editor: faded non-selected corollas (Unity uns
 const SELECT_ALPHA = 0.5; // corolla opacity in the exploded select view
 const TAP_PX = 6; // movement under this (px) counts as a tap, not a drag
 
+// Full-screen toggle icons (outward corners = enter, inward = exit).
+const FS_SVG = (inward: boolean): string =>
+  `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${
+    inward
+      ? "M2 6h4V2M14 6h-4V2M2 10h4v4M14 10h-4v4"
+      : "M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"
+  }"/></svg>`;
+
 /**
  * App shell: orbit + painted flower + shape editor + the original-style control
  * panel. Tap a petal to select its layer; use the left column to edit color,
@@ -51,6 +59,7 @@ class App {
   private readonly raycaster = new THREE.Raycaster();
   private readonly toastEl: HTMLDivElement;
   private toastTimer = 0;
+  private readonly fullscreenBtn: HTMLButtonElement;
   private introEl?: HTMLDivElement; // built lazily on first startIntro()
   private logoEl?: HTMLImageElement; // the logo inside introEl (faded via filter)
   private intro = false;
@@ -112,6 +121,7 @@ class App {
       onToggleShape: (active) => this.onToggleShape(active),
     });
     this.toastEl = this.makeToast();
+    this.fullscreenBtn = this.makeFullscreenButton();
 
     this.gallery = new Gallery(this.container, {
       store: this.store,
@@ -408,6 +418,7 @@ class App {
     this.intro = true;
     this.introEl ??= this.makeIntro(); // build (and fetch the logo) on demand
     this.background.setColors(0x000000, 0x000000);
+    this.setFullscreenVariant(this.fullscreenBtn, true); // reversed on black
     this.panel.setVisible(false);
     this.introEl.style.display = "flex";
     if (this.logoEl) this.logoEl.style.filter = "brightness(1)";
@@ -433,6 +444,7 @@ class App {
     this.select = false;
     this.editing = false;
     this.background.setColors(0x000000, 0x000000);
+    this.setFullscreenVariant(this.fullscreenBtn, true); // reversed on black
     this.panel.setVisible(true);
     this.panel.showHome();
     this.updateCorollaAppearance(); // merge the corollas back, opaque
@@ -451,6 +463,7 @@ class App {
     if (this.shapeMode) this.onToggleShape(false); // leave shape mode first
     this.panel.setShapeActive(false);
     this.background.setColors(0xffffff, 0xececf1);
+    this.setFullscreenVariant(this.fullscreenBtn, false); // light on white
     this.panel.setVisible(true);
     this.panel.showSelect();
     this.scene.updateMatrixWorld(true); // separation reads corolla bounds
@@ -465,6 +478,7 @@ class App {
     this.select = false;
     this.editing = true;
     this.background.setColors(0xffffff, 0xececf1);
+    this.setFullscreenVariant(this.fullscreenBtn, false); // light on white
     this.panel.showEditor();
     this.updateCorollaAppearance(); // merge the corollas back together
     this.orbit.glideTo(this.orbit.azimuth, 14); // ease down to the 3/4 view
@@ -498,6 +512,53 @@ class App {
     } as CSSStyleDeclaration);
     this.container.appendChild(el);
     return el;
+  }
+
+  /** Always-present full-screen toggle (bottom-right), styled like a card
+   * button. Lives above the gallery overlay; variant flipped per background. */
+  private makeFullscreenButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.title = "Full screen";
+    btn.innerHTML = FS_SVG(false);
+    Object.assign(btn.style, {
+      position: "absolute",
+      bottom: "16px",
+      right: "16px",
+      zIndex: "30", // above the gallery overlay (z-index 20)
+      width: "37px",
+      height: "37px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "0",
+      borderRadius: "12px",
+      cursor: "pointer",
+    } as CSSStyleDeclaration);
+    btn.addEventListener("click", () => this.toggleFullscreen());
+    document.addEventListener("fullscreenchange", () => {
+      btn.innerHTML = FS_SVG(!!document.fullscreenElement);
+    });
+    this.container.appendChild(btn);
+    this.setFullscreenVariant(btn, false); // default light; states override it
+    return btn;
+  }
+
+  /** Light card-button colors on white backgrounds, reversed on black. */
+  private setFullscreenVariant(btn: HTMLButtonElement, dark: boolean): void {
+    Object.assign(btn.style, {
+      border: `1px solid rgba(${dark ? "255,255,255" : "0,0,0"},0.25)`,
+      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
+      color: dark ? "#f2f2f4" : "#6e6e6e",
+      boxShadow: dark ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+  }
+
+  private toggleFullscreen(): void {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+    } else {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
   }
 
   private toast(message: string): void {
