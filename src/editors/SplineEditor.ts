@@ -32,8 +32,8 @@ import type { PointerInput } from "../input/PointerInput";
  * back to control-point-local space through that same transform. Editing the
  * spline rebuilds the shared petal mesh, so all petals reshape together.
  */
-const HANDLE_PX = 32;
-const ACTIVE_PX = 44;
+const HANDLE_PX = 40;
+const ACTIVE_PX = 52;
 const DASH_COUNT = 26;
 const DASH_SPEED = 1.2;
 
@@ -240,18 +240,30 @@ export class SplineEditor {
   }
 }
 
+/** Solid white disc with a grey border + soft shadow, matching the card button
+ * style (background rgba(255,255,255,0.92), border rgba(0,0,0,0.25)). */
 function makeHandleTexture(): CanvasTexture {
-  const size = 64;
+  const size = 128;
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 1, size / 2, size / 2, size / 2);
-  g.addColorStop(0.0, "rgba(255,255,255,1)");
-  g.addColorStop(0.45, "rgba(250,250,252,0.95)");
-  g.addColorStop(0.75, "rgba(150,160,178,0.55)");
-  g.addColorStop(1.0, "rgba(120,130,150,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
+  const cx = size / 2;
+  const r = size * 0.4; // leaves a margin for the border + shadow
+  const lineW = size * 0.04;
+
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = size * 0.05;
+  ctx.shadowOffsetY = size * 0.015;
+  ctx.beginPath();
+  ctx.arc(cx, cx, r, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fill();
+
+  ctx.shadowColor = "transparent"; // crisp border, no shadow
+  ctx.lineWidth = lineW;
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  ctx.stroke();
+
   const tex = new CanvasTexture(c);
   tex.needsUpdate = true;
   return tex;
