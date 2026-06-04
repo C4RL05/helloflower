@@ -637,21 +637,22 @@ class App {
       this.trySelectAt(touch.x, touch.y);
     }
 
+    const spinFrames = 60 * dt; // keep deg/sec constant across refresh rates
     if (this.intro || this.home) {
-      this.orbit.spinIdle(0.2); // spin the rose under the logo / home menu
+      this.orbit.spinIdle(0.2 * spinFrames); // spin the rose under the logo / home
     } else if (
       this.autoSpin &&
       !this.shapeMode &&
       now - this.lastInteraction > IDLE_DELAY_MS
     ) {
-      this.orbit.spinIdle(0.15);
+      this.orbit.spinIdle(0.15 * spinFrames);
     }
     if (this.shapeMode) {
       this.editor.update(dt, this.container.clientHeight);
     }
 
     this.flower.update(); // ease corolla separation + opacity (select view)
-    this.orbit.update();
+    this.orbit.update(dt);
     this.lighting.update(this.camera, this.orbit.target);
 
     this.renderer.clear();

@@ -27,9 +27,12 @@ export class OrbitCamera {
   private distGoal = 5;
   private pinchPrev = 0; // previous two-finger spread (px); 0 = no active pinch
 
+  // Match the original CameraBehaviour: a drag accumulates into the *goal* and
+  // the angle eases toward it each frame. The low ease + goal-lead gives the
+  // smooth post-release glide ("momentum"). Distance eases 2.5× faster.
   xSpeed = 200; // deg per screen width dragged
-  ySpeed = 110; // deg per screen height dragged
-  ease = 0.18;
+  ySpeed = 100; // deg per screen height dragged
+  ease = 0.1; // per-60fps-frame follow factor (CameraBehaviour ease)
   yMin = -25;
   yMax = 88; // allow a near top-down view (used by the intro)
   distMin = 0.5;
@@ -123,10 +126,15 @@ export class OrbitCamera {
     this.aziGoal += degPerFrame;
   }
 
-  update(): void {
-    this.azimuth += (this.aziGoal - this.azimuth) * this.ease;
-    this.elevation += (this.elevGoal - this.elevation) * this.ease;
-    this.distance += (this.distGoal - this.distance) * this.ease;
+  update(dt = 1 / 60): void {
+    // Frame-rate-independent easing: reproduce the original's per-60fps-frame
+    // lerp at any refresh rate, so the momentum feel is the same on 120Hz.
+    const frames = 60 * dt;
+    const k = 1 - Math.pow(1 - this.ease, frames);
+    const kDist = 1 - Math.pow(1 - this.ease * 2.5, frames); // distance settles faster
+    this.azimuth += (this.aziGoal - this.azimuth) * k;
+    this.elevation += (this.elevGoal - this.elevation) * k;
+    this.distance += (this.distGoal - this.distance) * kDist;
     this.apply();
   }
 
