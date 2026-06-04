@@ -117,11 +117,14 @@ export class Gallery {
       }
     }
     const gap = 12;
-    const edge = 32; // min margin from the grid to each screen edge
+    // Larger margin (32) on the screen's long edge, smaller (16) on the short
+    // edge: landscape → 32 sides / 16 top-bottom, portrait → the opposite.
+    const edgeX = w >= h ? 32 : 16;
+    const edgeY = w >= h ? 16 : 32;
     // Reserve the edge margins on both sides, plus room for the back button
     // (top) and hint (bottom) on the vertical axis.
-    const cellW = (w - edge * 2 - gap * (best.cols - 1)) / best.cols;
-    const cellH = (h - edge * 2 - 90 - gap * (best.rows - 1)) / best.rows;
+    const cellW = (w - edgeX * 2 - gap * (best.cols - 1)) / best.cols;
+    const cellH = (h - edgeY * 2 - 90 - gap * (best.rows - 1)) / best.rows;
     const cell = Math.max(36, Math.floor(Math.min(cellW, cellH)));
     this.grid.style.gridTemplateColumns = `repeat(${best.cols}, ${cell}px)`;
     this.grid.style.gridAutoRows = `${cell}px`;
