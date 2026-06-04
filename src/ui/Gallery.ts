@@ -59,6 +59,12 @@ export class Gallery {
       font: "13px system-ui, sans-serif",
       color: "#fff",
     } as CSSStyleDeclaration);
+    // Long-press is our delete gesture: stop the browser's context menu, text
+    // selection, and iOS image/callout (which would also cancel the pointer).
+    this.root.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.root.style.userSelect = "none";
+    this.root.style.setProperty("-webkit-user-select", "none");
+    this.root.style.setProperty("-webkit-touch-callout", "none");
 
     const back = this.makeButton("back", () => this.close());
     Object.assign(back.style, {
@@ -273,10 +279,12 @@ export class Gallery {
     const img = document.createElement("img");
     img.src = src;
     img.alt = "flower";
+    img.draggable = false;
     Object.assign(img.style, {
       width: "100%",
       height: "100%",
       objectFit: "contain",
+      pointerEvents: "none", // the cell handles the gesture, not the image
     } as CSSStyleDeclaration);
     return img;
   }
