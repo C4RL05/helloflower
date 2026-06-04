@@ -100,6 +100,11 @@ class App {
     this.renderer.domElement.style.touchAction = "none";
     this.container.appendChild(this.renderer.domElement);
 
+    // Native-app feel: block the browser menus/gestures that would interrupt
+    // the UI (right-click / long-press menu, iOS pinch-zoom gestures).
+    document.addEventListener("contextmenu", (e) => e.preventDefault());
+    document.addEventListener("gesturestart", (e) => e.preventDefault());
+
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.05, 100);
 

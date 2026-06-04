@@ -11,6 +11,14 @@
       :root {
         color-scheme: dark;
       }
+      /* Native-app feel: nothing selectable, no long-press callout, no tap
+         highlight anywhere. */
+      * {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
       html,
       body {
         margin: 0;
@@ -18,9 +26,9 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
+        overscroll-behavior: none; /* no pull-to-refresh / overscroll glow */
         background: #000;
         font-family: "Typ1451", system-ui, sans-serif;
-        -webkit-tap-highlight-color: transparent;
       }
       #app {
         position: fixed;
@@ -31,6 +39,9 @@
         display: block;
         width: 100%;
         height: 100%;
+      }
+      img {
+        -webkit-user-drag: none; /* no image drag / save sheet */
       }
     </style>
   </head>
