@@ -61,7 +61,9 @@ export class ControlPanel {
   private readonly shapeBtn: HTMLButtonElement;
   private readonly paramBtns = new Map<ParamName, HTMLButtonElement>();
   private readonly uiRoot: HTMLDivElement;
-  private readonly col: HTMLDivElement; // editor column
+  private readonly wrap: HTMLDivElement; // editor: scalable bar + sub-editor
+  private readonly bar: HTMLDivElement; // button bar (back/swatch/shape/params)
+  private readonly sub: HTMLDivElement; // active sub-editor (slider or picker)
   private readonly homeBar: HTMLDivElement; // home menu (over the black landing)
   private readonly selectBar: HTMLDivElement; // petal-selection: back/top/middle/bottom
   private readonly selectMsg: HTMLDivElement; // "select or touch petals to edit"
@@ -112,20 +114,34 @@ export class ControlPanel {
     parent.appendChild(this.uiRoot);
     parent = this.uiRoot;
 
-    const col = (this.col = document.createElement("div"));
-    Object.assign(col.style, {
+    // Editor: the button bar plus whichever sub-editor (slider or color picker)
+    // is open. The wrapper scales down to fit the viewport height (keeping the
+    // button aspect); the sub-editor stacks under the bar, or moves to its
+    // right when it doesn't fit under (see layoutEditor()).
+    const wrap = (this.wrap = document.createElement("div"));
+    Object.assign(wrap.style, {
       position: "absolute",
       top: "14px",
       left: "14px",
+      display: "none",
+      flexDirection: "column",
+      alignItems: "flex-start",
+      gap: "8px",
+      transformOrigin: "top left",
+      pointerEvents: "auto",
+    } as CSSStyleDeclaration);
+    wrap.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+    const bar = (this.bar = document.createElement("div"));
+    Object.assign(bar.style, {
       display: "flex",
       flexDirection: "column",
       gap: "7px",
       width: `${COLUMN_WIDTH}px`,
-      pointerEvents: "auto",
+      flex: "none",
     } as CSSStyleDeclaration);
-    col.addEventListener("pointerdown", (e) => e.stopPropagation());
 
-    col.appendChild(this.makeButton("back", () => this.onBack()));
+    bar.appendChild(this.makeButton("back", () => this.onBack()));
 
     // Two-tone color swatch (each half holds a hidden active marker)
     const swatch = document.createElement("div");
@@ -146,10 +162,10 @@ export class ControlPanel {
       const rect = swatch.getBoundingClientRect();
       this.openColor(e.clientY - rect.top < rect.height / 2 ? 0 : 1);
     });
-    col.appendChild(swatch);
+    bar.appendChild(swatch);
 
     this.shapeBtn = this.makeButton("shape", () => this.toggleShape());
-    col.appendChild(this.shapeBtn);
+    bar.appendChild(this.shapeBtn);
 
     // Param buttons (petals → curve) grouped into a single card, separated by
     // thin dividers, matching the original's stacked control box.
@@ -159,9 +175,21 @@ export class ControlPanel {
       this.paramBtns.set(name, btn);
       paramGroup.appendChild(btn);
     });
-    col.appendChild(paramGroup);
+    bar.appendChild(paramGroup);
+    wrap.appendChild(bar);
 
-    // Vertical param slider, shown in the column when a param is selected.
+    // Sub-editor column (slider + reset, or the color picker). Hidden until a
+    // param/swatch is tapped; layoutEditor() places it under or beside the bar.
+    const sub = (this.sub = document.createElement("div"));
+    Object.assign(sub.style, {
+      display: "none",
+      flexDirection: "column",
+      gap: "7px",
+      width: `${COLUMN_WIDTH}px`,
+      flex: "none",
+    } as CSSStyleDeclaration);
+
+    // Vertical param slider, shown when a param is selected.
     this.sliderCard = document.createElement("div");
     Object.assign(this.sliderCard.style, {
       display: "none",
@@ -181,20 +209,19 @@ export class ControlPanel {
     this.sliderInput.className = "hf-slider";
     this.sliderInput.addEventListener("input", () => this.onSliderInput());
     this.sliderCard.append(this.sliderInput);
-    col.appendChild(this.sliderCard);
+    sub.appendChild(this.sliderCard);
 
     // Reset just the active param to its loaded value.
     this.resetBtn = this.makeButton("reset", () => this.resetParam());
     this.resetBtn.style.display = "none";
-    col.appendChild(this.resetBtn);
+    sub.appendChild(this.resetBtn);
 
-    // Color picker BELOW the column, full column width.
+    // Color picker (full sub-column width).
     this.colorPop = document.createElement("div");
     Object.assign(this.colorPop.style, {
       position: "relative",
       width: "100%",
       display: "none",
-      marginTop: "2px",
     } as CSSStyleDeclaration);
     this.colorPop.addEventListener("pointerdown", (e) => e.stopPropagation());
     // Procedurally generated gradient (matches the original GradientSlider PNG),
@@ -222,9 +249,11 @@ export class ControlPanel {
     this.gradientMarker = this.makeMarker();
     this.gradientMarker.style.display = "none";
     this.colorPop.append(this.picker, this.gradientMarker);
-    col.appendChild(this.colorPop);
+    sub.appendChild(this.colorPop);
+    wrap.appendChild(sub);
 
-    parent.appendChild(col);
+    parent.appendChild(wrap);
+    window.addEventListener("resize", () => this.layoutEditor());
 
     // Home menu, shown over the black landing background after the intro logo.
     // Same column/bar style as the editor, but reversed (light on dark) so the
@@ -301,7 +330,7 @@ export class ControlPanel {
     this.closeColor();
     this.closeParam();
     this.homeBar.style.display = "flex";
-    this.col.style.display = "none";
+    this.wrap.style.display = "none";
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
   }
@@ -311,17 +340,51 @@ export class ControlPanel {
     this.closeColor();
     this.closeParam();
     this.homeBar.style.display = "none";
-    this.col.style.display = "none";
+    this.wrap.style.display = "none";
     this.selectBar.style.display = "flex";
     this.selectMsg.style.display = "block";
   }
 
-  /** Editor: show the editing column, hide the home/selection UI. */
+  /** Editor: show the editing bar + sub-editor, hide the home/selection UI. */
   showEditor(): void {
     this.homeBar.style.display = "none";
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
-    this.col.style.display = "flex";
+    this.wrap.style.display = "flex";
+    this.layoutEditor();
+  }
+
+  /**
+   * Fit the editor to the viewport height: scale the bar (uniformly, keeping
+   * the button aspect) if it's taller than the available space, and place the
+   * open sub-editor under the bar — or beside it (to the right) when it won't
+   * fit underneath.
+   */
+  private layoutEditor(): void {
+    if (this.wrap.style.display === "none") return;
+    const subOpen =
+      this.sliderCard.style.display !== "none" ||
+      this.colorPop.style.display !== "none";
+    this.sub.style.display = subOpen ? "flex" : "none";
+
+    const gap = 8;
+    const availH = this.uiRoot.clientHeight - 28; // 14px top + 14px bottom
+    const barH = this.bar.offsetHeight; // intrinsic (transform doesn't affect it)
+    const subH = subOpen ? this.sub.offsetHeight : 0;
+
+    let beside = false;
+    let naturalH = barH;
+    if (subOpen) {
+      if (barH + gap + subH <= availH) {
+        naturalH = barH + gap + subH; // fits stacked
+      } else {
+        beside = true; // move the sub-editor to the right of the bar
+        naturalH = Math.max(barH, subH);
+      }
+    }
+    this.wrap.style.flexDirection = beside ? "row" : "column";
+    const scale = availH > 0 && naturalH > 0 ? Math.min(1, availH / naturalH) : 1;
+    this.wrap.style.transform = scale < 1 ? `scale(${scale})` : "none";
   }
 
   setCorolla(data: CorollaData): void {
@@ -373,6 +436,7 @@ export class ControlPanel {
     this.loadSlider(name);
     this.sliderCard.style.display = "flex";
     this.resetBtn.style.display = "";
+    this.layoutEditor();
   }
 
   private closeParam(): void {
@@ -380,6 +444,7 @@ export class ControlPanel {
     for (const btn of this.paramBtns.values()) this.highlight(btn, false);
     this.sliderCard.style.display = "none";
     this.resetBtn.style.display = "none";
+    this.layoutEditor();
   }
 
   private loadSlider(name: ParamName): void {
@@ -416,12 +481,14 @@ export class ControlPanel {
     this.gradientMarker.style.display = "none"; // until they pick
     this.swatchMarkers[0].style.display = index === 0 ? "block" : "none";
     this.swatchMarkers[1].style.display = index === 1 ? "block" : "none";
+    this.layoutEditor();
   }
 
   private closeColor(): void {
     this.colorPop.style.display = "none";
     this.swatchMarkers[0].style.display = "none";
     this.swatchMarkers[1].style.display = "none";
+    this.layoutEditor();
   }
 
   private onPick(e: PointerEvent, begin: boolean): void {
