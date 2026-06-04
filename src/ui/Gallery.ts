@@ -14,9 +14,15 @@ export interface GalleryDeps {
   toast(message: string): void;
 }
 
-const COLS = 4;
-const ROWS = 6;
-const SLOTS = COLS * ROWS; // single 4×6 page
+const SLOTS = 24; // gallery cells (presets + user); arranged responsively
+// Candidate column×row arrangements of SLOTS; the one whose shape best matches
+// the screen aspect is chosen so the grid fits and stays centered.
+const GRID_LAYOUTS = [
+  { cols: 3, rows: 8 },
+  { cols: 4, rows: 6 },
+  { cols: 6, rows: 4 },
+  { cols: 8, rows: 3 },
+];
 const HOLD_MS = 3000; // press-and-hold duration to delete a saved flower
 
 /**
@@ -47,6 +53,8 @@ export class Gallery {
       background: "#000",
       display: "none",
       flexDirection: "column",
+      alignItems: "center", // center the grid horizontally…
+      justifyContent: "center", // …and vertically
       zIndex: "20",
       font: "13px system-ui, sans-serif",
       color: "#fff",
@@ -63,19 +71,13 @@ export class Gallery {
     } as CSSStyleDeclaration);
     this.root.appendChild(back);
 
+    // Grid is sized + arranged by layout() (columns/rows and square cell size);
+    // the root centers it. No scroll — cells shrink to fit the viewport.
     this.grid = document.createElement("div");
     Object.assign(this.grid.style, {
-      flex: "1",
       display: "grid",
-      gridTemplateColumns: `repeat(${COLS}, 1fr)`,
       gap: "12px",
-      alignContent: "start",
-      padding: "64px 24px 12px",
-      maxWidth: "560px",
-      width: "100%",
-      margin: "0 auto",
       boxSizing: "border-box",
-      overflowY: "auto",
     } as CSSStyleDeclaration);
     this.root.appendChild(this.grid);
 
@@ -83,13 +85,44 @@ export class Gallery {
     hint.textContent =
       "touch slot to load · empty slot to save · hold to delete";
     Object.assign(hint.style, {
+      position: "absolute",
+      bottom: "16px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      whiteSpace: "nowrap",
       textAlign: "center",
       opacity: "0.5",
-      padding: "10px 0 16px",
     } as CSSStyleDeclaration);
     this.root.appendChild(hint);
 
     parent.appendChild(this.root);
+    window.addEventListener("resize", () => {
+      if (this.open_) this.layout();
+    });
+  }
+
+  /** Pick the column/row arrangement that best matches the screen aspect, then
+   * size square cells to fit the viewport, and keep the grid centered. */
+  private layout(): void {
+    const w = this.root.clientWidth || window.innerWidth;
+    const h = this.root.clientHeight || window.innerHeight;
+    const aspect = w / h;
+    let best = GRID_LAYOUTS[1];
+    let bestErr = Infinity;
+    for (const g of GRID_LAYOUTS) {
+      const err = Math.abs(g.cols / g.rows - aspect);
+      if (err < bestErr) {
+        bestErr = err;
+        best = g;
+      }
+    }
+    const gap = 12;
+    // Reserve room for the back button (top) and hint (bottom) plus margins.
+    const cellW = (w - 32 - gap * (best.cols - 1)) / best.cols;
+    const cellH = (h - 130 - gap * (best.rows - 1)) / best.rows;
+    const cell = Math.max(36, Math.floor(Math.min(cellW, cellH)));
+    this.grid.style.gridTemplateColumns = `repeat(${best.cols}, ${cell}px)`;
+    this.grid.style.gridAutoRows = `${cell}px`;
   }
 
   get isOpen(): boolean {
@@ -99,6 +132,7 @@ export class Gallery {
   async open(): Promise<void> {
     this.open_ = true;
     this.root.style.display = "flex";
+    this.layout();
     if (!this.presetReady) {
       for (const desc of PRESET_FLOWERS) {
         this.presetThumbs.set(desc, this.deps.captureDescription(desc));
