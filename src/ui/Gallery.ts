@@ -117,7 +117,7 @@ export class Gallery {
       }
     }
     const gap = 12;
-    const edge = 48; // min margin from the grid to each screen edge
+    const edge = 32; // min margin from the grid to each screen edge
     // Reserve the edge margins on both sides, plus room for the back button
     // (top) and hint (bottom) on the vertical axis.
     const cellW = (w - edge * 2 - gap * (best.cols - 1)) / best.cols;
