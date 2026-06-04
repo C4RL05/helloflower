@@ -23,7 +23,7 @@ const GRID_LAYOUTS = [
   { cols: 6, rows: 4 },
   { cols: 8, rows: 3 },
 ];
-const HOLD_MS = 3000; // press-and-hold duration to delete a saved flower
+const HOLD_MS = 2000; // press-and-hold duration to delete a saved flower
 
 /**
  * Single-page gallery overlay (4×6 grid) on black, matching the home menu's
