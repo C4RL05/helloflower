@@ -117,9 +117,11 @@ export class Gallery {
       }
     }
     const gap = 12;
-    // Reserve room for the back button (top) and hint (bottom) plus margins.
-    const cellW = (w - 32 - gap * (best.cols - 1)) / best.cols;
-    const cellH = (h - 130 - gap * (best.rows - 1)) / best.rows;
+    const edge = 48; // min margin from the grid to each screen edge
+    // Reserve the edge margins on both sides, plus room for the back button
+    // (top) and hint (bottom) on the vertical axis.
+    const cellW = (w - edge * 2 - gap * (best.cols - 1)) / best.cols;
+    const cellH = (h - edge * 2 - 90 - gap * (best.rows - 1)) / best.rows;
     const cell = Math.max(36, Math.floor(Math.min(cellW, cellH)));
     this.grid.style.gridTemplateColumns = `repeat(${best.cols}, ${cell}px)`;
     this.grid.style.gridAutoRows = `${cell}px`;
