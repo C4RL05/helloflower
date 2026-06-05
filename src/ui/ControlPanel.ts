@@ -79,6 +79,7 @@ export class ControlPanel {
   private readonly selectBar: HTMLDivElement; // petal-selection: back/top/middle/bottom
   private readonly selectMsg: HTMLDivElement; // "select or touch petals to edit"
   private readonly shareBar: HTMLDivElement; // share: back + gradient swatch + share
+  private readonly receivedBar: HTMLDivElement; // received shared flower: back only
   private readonly gradTop: HTMLDivElement; // top gradient swatch half
   private readonly gradBottom: HTMLDivElement; // bottom gradient swatch half
   private readonly gradMarkers: HTMLDivElement[] = [];
@@ -353,6 +354,24 @@ export class ControlPanel {
     this.shareBar.append(shareBack, gradSwatch.swatch, shareCopy);
     this.reversibleBtns.push(shareBack, shareCopy);
     parent.appendChild(this.shareBar);
+
+    // Received-flower view: just `back` (over the shared gradient), reversible.
+    this.receivedBar = document.createElement("div");
+    Object.assign(this.receivedBar.style, {
+      position: "absolute",
+      top: SAFE_TOP,
+      left: SAFE_LEFT,
+      display: "none",
+      flexDirection: "column",
+      gap: "7px",
+      width: `${COLUMN_WIDTH}px`,
+      pointerEvents: "auto",
+    } as CSSStyleDeclaration);
+    this.receivedBar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    const recBack = this.makeButton("back", () => this.cb.onHome(), true);
+    this.receivedBar.append(recBack);
+    this.reversibleBtns.push(recBack);
+    parent.appendChild(this.receivedBar);
   }
 
   /** Show/hide the entire control UI (used by the intro screen). */
@@ -369,6 +388,7 @@ export class ControlPanel {
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
     this.shareBar.style.display = "none";
+    this.receivedBar.style.display = "none";
   }
 
   /** Petal selection: show back/bottom/middle/top + the prompt; hide the rest. */
@@ -380,6 +400,7 @@ export class ControlPanel {
     this.selectBar.style.display = "flex";
     this.selectMsg.style.display = "block";
     this.shareBar.style.display = "none";
+    this.receivedBar.style.display = "none";
   }
 
   /** Share view: back + gradient swatch + share(copy). */
@@ -391,6 +412,19 @@ export class ControlPanel {
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
     this.shareBar.style.display = "flex";
+    this.receivedBar.style.display = "none";
+  }
+
+  /** Received shared flower: just `back` over the gradient. */
+  showReceived(): void {
+    this.closeColor();
+    this.closeParam();
+    this.homeBar.style.display = "none";
+    this.wrap.style.display = "none";
+    this.selectBar.style.display = "none";
+    this.selectMsg.style.display = "none";
+    this.shareBar.style.display = "none";
+    this.receivedBar.style.display = "flex";
   }
 
   /** Editor: show the editing bar + sub-editor, hide the home/selection UI. */
@@ -399,6 +433,7 @@ export class ControlPanel {
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
     this.shareBar.style.display = "none";
+    this.receivedBar.style.display = "none";
     this.wrap.style.display = "flex";
     this.layoutEditor();
   }

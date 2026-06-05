@@ -66,6 +66,7 @@ class App {
   private home = false; // home menu (black bg) between intro and editor
   private select = false; // exploded petal-selection view between home and editor
   private editing = false; // in the flower editor (fades non-selected corollas)
+  private received = false; // viewing a received shared flower over its gradient
   private corollasSolid = false; // editor: all corollas opaque while drag-rotating
   private gradTopHex = 0x000000; // share gradient top color, default black
   private gradBottomHex = 0x000000; // share gradient bottom color, default black
@@ -175,7 +176,7 @@ class App {
         this.gradBottomHex = shared.gradient[1];
       }
       this.loadDescription(shared.description);
-      this.enterHome(); // present the shared flower over its gradient
+      this.enterReceived(); // present the shared flower over its gradient
     } else {
       this.loadFlower(0);
       this.startIntro();
@@ -194,6 +195,7 @@ class App {
         this.home = false;
         this.select = false;
         this.editing = false;
+        this.received = false;
         if (this.introEl) this.introEl.style.display = "none";
         this.autoSpin = false;
         this.orbit.setAngles(az, el);
@@ -462,7 +464,10 @@ class App {
     this.home = true;
     this.select = false;
     this.editing = false;
-    this.applyShareBackground(); // share gradient (black by default)
+    this.received = false;
+    this.background.setColors(0x000000, 0x000000); // home is always black
+    this.panel.setReversed(true);
+    this.setFullscreenVariant(this.fullscreenBtn, true);
     this.panel.setVisible(true);
     this.panel.showHome();
     this.updateCorollaAppearance(); // merge the corollas back, opaque
@@ -471,12 +476,29 @@ class App {
     this.lastInteraction = 0; // keep the idle rotation running
   }
 
+  /** Received a shared flower: present it over its gradient with only `back`
+   * (the gradient is kept, so it reappears when entering share). */
+  private enterReceived(): void {
+    this.home = false;
+    this.select = false;
+    this.editing = false;
+    this.received = true;
+    this.applyShareBackground(); // the shared gradient + button reversal
+    this.panel.setVisible(true);
+    this.panel.showReceived();
+    this.updateCorollaAppearance(); // merged, opaque
+    this.orbit.glideTo(this.orbit.azimuth, 14); // 3/4 view shows the gradient
+    this.autoSpin = true;
+    this.lastInteraction = 0;
+  }
+
   /** Share view: present the flower over the gradient and edit the two gradient
    * colors; the `share` button copies a link that carries the gradient. */
   private enterShare(): void {
     this.home = false;
     this.select = false;
     this.editing = false;
+    this.received = false;
     this.applyShareBackground();
     this.panel.setVisible(true);
     this.panel.showShare();
@@ -515,6 +537,7 @@ class App {
     this.home = false;
     this.select = true;
     this.editing = false;
+    this.received = false;
     if (this.shapeMode) this.onToggleShape(false); // leave shape mode first
     this.panel.setShapeActive(false);
     this.background.setColors(0xffffff, 0xececf1);
@@ -532,6 +555,7 @@ class App {
     this.home = false;
     this.select = false;
     this.editing = true;
+    this.received = false;
     this.background.setColors(0xffffff, 0xececf1);
     this.setFullscreenVariant(this.fullscreenBtn, false); // light on white
     this.panel.showEditor();
@@ -686,8 +710,8 @@ class App {
     }
 
     const spinFrames = 60 * dt; // keep deg/sec constant across refresh rates
-    if (this.intro || this.home) {
-      this.orbit.spinIdle(0.2 * spinFrames); // spin the rose under the logo / home
+    if (this.intro || this.home || this.received) {
+      this.orbit.spinIdle(0.2 * spinFrames); // spin under the logo / home / received
     } else if (
       this.autoSpin &&
       !this.shapeMode &&
