@@ -530,8 +530,9 @@ class App {
     btn.innerHTML = FS_SVG(false);
     Object.assign(btn.style, {
       position: "absolute",
-      bottom: "16px",
-      right: "16px",
+      // Clear the device safe area (rounded corners / side notch / home bar).
+      bottom: "max(16px, env(safe-area-inset-bottom, 0px))",
+      right: "max(16px, env(safe-area-inset-right, 0px))",
       zIndex: "30", // above the gallery overlay (z-index 20)
       width: "37px",
       height: "37px",

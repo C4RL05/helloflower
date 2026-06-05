@@ -42,6 +42,12 @@ const COLUMN_WIDTH = 74;
 // Rendered height of a card button (makeButton); the slider thumb matches it.
 const BUTTON_HEIGHT = 37;
 
+// Edge offsets that clear the device's safe area (notch / camera hole / rounded
+// corners) — important in landscape and full screen. Falls back to 14px.
+const SAFE_TOP = "max(14px, env(safe-area-inset-top, 0px))";
+const SAFE_LEFT = "max(14px, env(safe-area-inset-left, 0px))";
+const SAFE_RIGHT = "max(14px, env(safe-area-inset-right, 0px))";
+
 /**
  * The editing UI, styled to match the original's left control column:
  * `back`, a two-tone color swatch (main over secondary), `shape`, then
@@ -121,8 +127,8 @@ export class ControlPanel {
     const wrap = (this.wrap = document.createElement("div"));
     Object.assign(wrap.style, {
       position: "absolute",
-      top: "14px",
-      left: "14px",
+      top: SAFE_TOP,
+      left: SAFE_LEFT,
       display: "none",
       flexDirection: "column",
       alignItems: "flex-start",
@@ -263,8 +269,8 @@ export class ControlPanel {
     this.homeBar = document.createElement("div");
     Object.assign(this.homeBar.style, {
       position: "absolute",
-      top: "14px",
-      left: "14px",
+      top: SAFE_TOP,
+      left: SAFE_LEFT,
       display: "none",
       flexDirection: "column",
       gap: "7px",
@@ -284,8 +290,8 @@ export class ControlPanel {
     this.selectBar = document.createElement("div");
     Object.assign(this.selectBar.style, {
       position: "absolute",
-      top: "14px",
-      left: "14px",
+      top: SAFE_TOP,
+      left: SAFE_LEFT,
       display: "none",
       flexDirection: "column",
       gap: "7px",
@@ -370,7 +376,8 @@ export class ControlPanel {
     this.sub.style.display = subOpen ? "flex" : "none";
 
     const gap = 8;
-    const availH = this.uiRoot.clientHeight - 28; // 14px top + 14px bottom
+    // Resolved top includes the safe-area inset (notch); reserve 14px at the bottom.
+    const availH = this.uiRoot.clientHeight - this.wrap.offsetTop - 14;
     const barH = this.bar.offsetHeight; // intrinsic (transform doesn't affect it)
     const subH = subOpen ? this.sub.offsetHeight : 0;
     const fitsUnder = subOpen && barH + gap + subH <= availH;
@@ -400,8 +407,8 @@ export class ControlPanel {
       if (this.sub.parentElement !== this.uiRoot) this.uiRoot.appendChild(this.sub);
       Object.assign(this.sub.style, {
         position: "absolute",
-        top: "14px",
-        right: "14px",
+        top: SAFE_TOP,
+        right: SAFE_RIGHT,
         transformOrigin: "top right",
         transform: css,
       } as CSSStyleDeclaration);

@@ -63,8 +63,9 @@ export class Gallery {
     const back = this.makeButton("back", () => this.close());
     Object.assign(back.style, {
       position: "absolute",
-      top: "14px",
-      left: "14px",
+      // Clear the device safe area (notch / camera) in landscape + full screen.
+      top: "max(14px, env(safe-area-inset-top, 0px))",
+      left: "max(14px, env(safe-area-inset-left, 0px))",
       zIndex: "1",
       width: "74px", // match the home/editor button bar
       padding: "9px 0",
