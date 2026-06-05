@@ -187,7 +187,9 @@ export class ControlPanel {
       gap: "7px",
       width: `${COLUMN_WIDTH}px`,
       flex: "none",
+      pointerEvents: "auto", // stays interactive when reparented to the right
     } as CSSStyleDeclaration);
+    sub.addEventListener("pointerdown", (e) => e.stopPropagation());
 
     // Vertical param slider, shown when a param is selected.
     this.sliderCard = document.createElement("div");
@@ -356,9 +358,9 @@ export class ControlPanel {
 
   /**
    * Fit the editor to the viewport height: scale the bar (uniformly, keeping
-   * the button aspect) if it's taller than the available space, and place the
-   * open sub-editor under the bar — or beside it (to the right) when it won't
-   * fit underneath.
+   * the button aspect) if it's taller than the available space, and stack the
+   * open sub-editor under the bar — or, when it won't fit underneath, move it
+   * to the right edge of the screen (scaled independently).
    */
   private layoutEditor(): void {
     if (this.wrap.style.display === "none") return;
@@ -371,20 +373,39 @@ export class ControlPanel {
     const availH = this.uiRoot.clientHeight - 28; // 14px top + 14px bottom
     const barH = this.bar.offsetHeight; // intrinsic (transform doesn't affect it)
     const subH = subOpen ? this.sub.offsetHeight : 0;
+    const fitsUnder = subOpen && barH + gap + subH <= availH;
 
-    let beside = false;
-    let naturalH = barH;
-    if (subOpen) {
-      if (barH + gap + subH <= availH) {
-        naturalH = barH + gap + subH; // fits stacked
-      } else {
-        beside = true; // move the sub-editor to the right of the bar
-        naturalH = Math.max(barH, subH);
-      }
+    if (!subOpen || fitsUnder) {
+      // Stacked: sub-editor under the bar, scaled together with it.
+      if (this.sub.parentElement !== this.wrap) this.wrap.appendChild(this.sub);
+      Object.assign(this.sub.style, {
+        position: "",
+        top: "",
+        right: "",
+        transform: "",
+        transformOrigin: "",
+      } as CSSStyleDeclaration);
+      const naturalH = subOpen ? barH + gap + subH : barH;
+      const scale = naturalH > 0 ? Math.min(1, availH / naturalH) : 1;
+      this.wrap.style.transform = scale < 1 ? `scale(${scale})` : "none";
+    } else {
+      // Doesn't fit under: keep the bar top-left (scaled to fit) and move the
+      // sub-editor to the right edge of the screen (scaled to fit if needed,
+      // clearing the bottom-right full-screen button).
+      const barScale = barH > 0 ? Math.min(1, availH / barH) : 1;
+      this.wrap.style.transform = barScale < 1 ? `scale(${barScale})` : "none";
+
+      if (this.sub.parentElement !== this.uiRoot) this.uiRoot.appendChild(this.sub);
+      const subAvailH = Math.max(60, availH - 48);
+      const subScale = subH > 0 ? Math.min(1, subAvailH / subH) : 1;
+      Object.assign(this.sub.style, {
+        position: "absolute",
+        top: "14px",
+        right: "14px",
+        transformOrigin: "top right",
+        transform: subScale < 1 ? `scale(${subScale})` : "none",
+      } as CSSStyleDeclaration);
     }
-    this.wrap.style.flexDirection = beside ? "row" : "column";
-    const scale = availH > 0 && naturalH > 0 ? Math.min(1, availH / naturalH) : 1;
-    this.wrap.style.transform = scale < 1 ? `scale(${scale})` : "none";
   }
 
   setCorolla(data: CorollaData): void {
