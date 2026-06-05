@@ -11,8 +11,17 @@ describe("ShareUrl", () => {
       const hash = encodeFlowerHash(desc);
       expect(hash.startsWith("#/f/")).toBe(true);
       const decoded = decodeFlowerFromLocation(hash, "");
-      expect(decoded).toBe(desc);
+      expect(decoded?.description).toBe(desc);
+      expect(decoded?.gradient).toBeNull();
     }
+  });
+
+  it("round-trips a flower with a background gradient", () => {
+    const desc = "helloflower1.3#name_Test";
+    const hash = encodeFlowerHash(desc, [0x123456, 0xabcdef]);
+    const decoded = decodeFlowerFromLocation(hash, "");
+    expect(decoded?.description).toBe(desc);
+    expect(decoded?.gradient).toEqual([0x123456, 0xabcdef]);
   });
 
   it("reads the ?flower= query fallback", () => {
@@ -21,7 +30,7 @@ describe("ShareUrl", () => {
       "",
       "?flower=" + encodeURIComponent(desc),
     );
-    expect(decoded).toBe(desc);
+    expect(decoded?.description).toBe(desc);
   });
 
   it("returns null when no flower is present", () => {

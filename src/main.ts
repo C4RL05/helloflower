@@ -67,6 +67,8 @@ class App {
   private select = false; // exploded petal-selection view between home and editor
   private editing = false; // in the flower editor (fades non-selected corollas)
   private corollasSolid = false; // editor: all corollas opaque while drag-rotating
+  private gradTopHex = 0x000000; // share gradient top color, default black
+  private gradBottomHex = 0x000000; // share gradient bottom color, default black
   private readonly store = new FlowerStore();
   private readonly thumbnailer = new ThumbnailRenderer();
   private readonly gallery: Gallery;
@@ -122,7 +124,9 @@ class App {
       onHome: () => this.enterHome(), // select back → home
       onEdit: () => this.enterSelect(), // home edit → petal selection
       onSelectCorolla: (slot) => this.editCorolla(slot),
-      onShare: () => this.share(),
+      onShare: () => this.enterShare(),
+      onShareCopy: () => this.share(),
+      onShareColor: (index, color) => this.onShareColor(index, color),
       onGallery: () => this.gallery.open(),
       onColor: (index, color) => this.onColor(index, color),
       onParam: (name, value) => this.onParam(name, value),
@@ -166,7 +170,12 @@ class App {
       window.location.search,
     );
     if (shared) {
-      this.loadDescription(shared);
+      if (shared.gradient) {
+        this.gradTopHex = shared.gradient[0];
+        this.gradBottomHex = shared.gradient[1];
+      }
+      this.loadDescription(shared.description);
+      this.enterHome(); // present the shared flower over its gradient
     } else {
       this.loadFlower(0);
       this.startIntro();
@@ -244,13 +253,15 @@ class App {
 
   private share(): void {
     const description = this.flower.toDescription();
+    const gradient: [number, number] = [this.gradTopHex, this.gradBottomHex];
     const url = buildShareUrl(
       window.location.origin,
       window.location.pathname,
       description,
+      gradient,
     );
     // Reflect the current flower in the address bar so a refresh/copy works.
-    window.history.replaceState(null, "", encodeFlowerHash(description));
+    window.history.replaceState(null, "", encodeFlowerHash(description, gradient));
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(
         () => this.toast("link copied to clipboard"),
@@ -451,14 +462,50 @@ class App {
     this.home = true;
     this.select = false;
     this.editing = false;
-    this.background.setColors(0x000000, 0x000000);
-    this.setFullscreenVariant(this.fullscreenBtn, true); // reversed on black
+    this.applyShareBackground(); // share gradient (black by default)
     this.panel.setVisible(true);
     this.panel.showHome();
     this.updateCorollaAppearance(); // merge the corollas back, opaque
     this.orbit.glideTo(this.orbit.azimuth, 88); // ease back to top-down
     this.autoSpin = true;
     this.lastInteraction = 0; // keep the idle rotation running
+  }
+
+  /** Share view: present the flower over the gradient and edit the two gradient
+   * colors; the `share` button copies a link that carries the gradient. */
+  private enterShare(): void {
+    this.home = false;
+    this.select = false;
+    this.editing = false;
+    this.applyShareBackground();
+    this.panel.setVisible(true);
+    this.panel.showShare();
+    this.updateCorollaAppearance(); // merged, opaque
+    this.orbit.glideTo(this.orbit.azimuth, 14); // 3/4 view shows the gradient
+    this.autoSpin = false;
+  }
+
+  private onShareColor(index: number, color: Color): void {
+    const hex = color.getHex();
+    if (index === 0) this.gradTopHex = hex;
+    else this.gradBottomHex = hex;
+    this.applyShareBackground();
+  }
+
+  /** Drive the background gradient and the over-gradient button variants from
+   * the two share colors. Bars reverse with the top color, the bottom-right
+   * full-screen button with the bottom color (where each sits on the gradient). */
+  private applyShareBackground(): void {
+    this.background.setColors(this.gradTopHex, this.gradBottomHex);
+    this.panel.setShareColors(
+      new THREE.Color(this.gradTopHex),
+      new THREE.Color(this.gradBottomHex),
+    );
+    this.panel.setReversed(luminance(this.gradTopHex) < 0.55);
+    this.setFullscreenVariant(
+      this.fullscreenBtn,
+      luminance(this.gradBottomHex) < 0.55,
+    );
   }
 
   /** Petal selection: white background, corollas exploded apart + semi-
@@ -660,6 +707,15 @@ class App {
     this.background.render(this.renderer);
     this.renderer.render(this.scene, this.camera);
   };
+}
+
+/** Relative luminance (0..1) of an 0xRRGGBB color — for the dark/light button
+ * decision over the background gradient. */
+function luminance(hex: number): number {
+  const r = ((hex >> 16) & 0xff) / 255;
+  const g = ((hex >> 8) & 0xff) / 255;
+  const b = (hex & 0xff) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 const container = document.getElementById("app");

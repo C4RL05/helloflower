@@ -14,7 +14,12 @@ export interface ControlPanelCallbacks {
   onEdit(): void;
   /** Selection-view bottom/middle/top (slot 0/1/2) → edit that corolla. */
   onSelectCorolla(slot: number): void;
+  /** Home `share` → enter the share (background-gradient) view. */
   onShare(): void;
+  /** Share view `share` → copy the link. */
+  onShareCopy(): void;
+  /** Share view gradient swatch: index 0 (top) / 1 (bottom) picked color. */
+  onShareColor(index: number, color: Color): void;
   onGallery(): void;
   /** index 0 (main) / 1 (secondary); color is the picked [0,1] color. */
   onColor(index: number, color: Color): void;
@@ -73,6 +78,13 @@ export class ControlPanel {
   private readonly homeBar: HTMLDivElement; // home menu (over the black landing)
   private readonly selectBar: HTMLDivElement; // petal-selection: back/top/middle/bottom
   private readonly selectMsg: HTMLDivElement; // "select or touch petals to edit"
+  private readonly shareBar: HTMLDivElement; // share: back + gradient swatch + share
+  private readonly gradTop: HTMLDivElement; // top gradient swatch half
+  private readonly gradBottom: HTMLDivElement; // bottom gradient swatch half
+  private readonly gradMarkers: HTMLDivElement[] = [];
+  // Buttons over the (gradient) background that flip light/dark with brightness.
+  private readonly reversibleBtns: HTMLButtonElement[] = [];
+  private colorTarget: "corolla" | "gradient" = "corolla";
 
   // Color picker (below the column)
   private readonly colorPop: HTMLDivElement;
@@ -149,26 +161,13 @@ export class ControlPanel {
 
     bar.appendChild(this.makeButton("back", () => this.onBack()));
 
-    // Two-tone color swatch (each half holds a hidden active marker)
-    const swatch = document.createElement("div");
-    Object.assign(swatch.style, {
-      height: "56px",
-      borderRadius: "12px",
-      overflow: "hidden",
-      border: "1px solid rgba(0,0,0,0.08)",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-      cursor: "pointer",
-      display: "flex",
-      flexDirection: "column",
-    } as CSSStyleDeclaration);
-    this.swatchTop = this.makeSwatchHalf();
-    this.swatchBottom = this.makeSwatchHalf();
-    swatch.append(this.swatchTop, this.swatchBottom);
-    swatch.addEventListener("click", (e) => {
-      const rect = swatch.getBoundingClientRect();
-      this.openColor(e.clientY - rect.top < rect.height / 2 ? 0 : 1);
-    });
-    bar.appendChild(swatch);
+    // Two-tone corolla color swatch.
+    const editSwatch = this.makeSwatch(this.swatchMarkers, (i) =>
+      this.openColor(i),
+    );
+    this.swatchTop = editSwatch.top;
+    this.swatchBottom = editSwatch.bottom;
+    bar.appendChild(editSwatch.swatch);
 
     this.shapeBtn = this.makeButton("shape", () => this.toggleShape());
     bar.appendChild(this.shapeBtn);
@@ -278,11 +277,13 @@ export class ControlPanel {
       pointerEvents: "auto",
     } as CSSStyleDeclaration);
     this.homeBar.addEventListener("pointerdown", (e) => e.stopPropagation());
-    this.homeBar.append(
+    const homeButtons = [
       this.makeButton("edit", () => this.cb.onEdit(), true),
       this.makeButton("gallery", () => this.cb.onGallery(), true),
       this.makeButton("share", () => this.cb.onShare(), true),
-    );
+    ];
+    this.homeBar.append(...homeButtons);
+    this.reversibleBtns.push(...homeButtons);
     parent.appendChild(this.homeBar);
 
     // Petal-selection bar (white background): back + bottom/middle/top, which
@@ -326,6 +327,32 @@ export class ControlPanel {
       pointerEvents: "none",
     } as CSSStyleDeclaration);
     parent.appendChild(this.selectMsg);
+
+    // Share view: back, the background-gradient swatch (tap a half to pick its
+    // color), and a `share` button that copies the link. These sit over the
+    // gradient, so they're reversible by brightness.
+    this.shareBar = document.createElement("div");
+    Object.assign(this.shareBar.style, {
+      position: "absolute",
+      top: SAFE_TOP,
+      left: SAFE_LEFT,
+      display: "none",
+      flexDirection: "column",
+      gap: "7px",
+      width: `${COLUMN_WIDTH}px`,
+      pointerEvents: "auto",
+    } as CSSStyleDeclaration);
+    this.shareBar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    const shareBack = this.makeButton("back", () => this.cb.onHome(), true);
+    const gradSwatch = this.makeSwatch(this.gradMarkers, (i) =>
+      this.openGradientColor(i),
+    );
+    this.gradTop = gradSwatch.top;
+    this.gradBottom = gradSwatch.bottom;
+    const shareCopy = this.makeButton("share", () => this.cb.onShareCopy(), true);
+    this.shareBar.append(shareBack, gradSwatch.swatch, shareCopy);
+    this.reversibleBtns.push(shareBack, shareCopy);
+    parent.appendChild(this.shareBar);
   }
 
   /** Show/hide the entire control UI (used by the intro screen). */
@@ -341,6 +368,7 @@ export class ControlPanel {
     this.wrap.style.display = "none";
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
+    this.shareBar.style.display = "none";
   }
 
   /** Petal selection: show back/bottom/middle/top + the prompt; hide the rest. */
@@ -351,6 +379,18 @@ export class ControlPanel {
     this.wrap.style.display = "none";
     this.selectBar.style.display = "flex";
     this.selectMsg.style.display = "block";
+    this.shareBar.style.display = "none";
+  }
+
+  /** Share view: back + gradient swatch + share(copy). */
+  showShare(): void {
+    this.closeColor();
+    this.closeParam();
+    this.homeBar.style.display = "none";
+    this.wrap.style.display = "none";
+    this.selectBar.style.display = "none";
+    this.selectMsg.style.display = "none";
+    this.shareBar.style.display = "flex";
   }
 
   /** Editor: show the editing bar + sub-editor, hide the home/selection UI. */
@@ -358,8 +398,15 @@ export class ControlPanel {
     this.homeBar.style.display = "none";
     this.selectBar.style.display = "none";
     this.selectMsg.style.display = "none";
+    this.shareBar.style.display = "none";
     this.wrap.style.display = "flex";
     this.layoutEditor();
+  }
+
+  /** Paint the gradient swatch from the current share colors. */
+  setShareColors(top: Color, bottom: Color): void {
+    this.paintSwatch(this.gradTop, top);
+    this.paintSwatch(this.gradBottom, bottom);
   }
 
   /**
@@ -504,18 +551,34 @@ export class ControlPanel {
 
   private openColor(index: number): void {
     this.closeParam();
+    this.colorTarget = "corolla";
     this.activeColor = index;
+    if (this.colorPop.parentElement !== this.sub) this.sub.appendChild(this.colorPop);
     this.colorPop.style.display = "block";
     this.gradientMarker.style.display = "none"; // until they pick
+    this.gradMarkers.forEach((m) => (m.style.display = "none"));
     this.swatchMarkers[0].style.display = index === 0 ? "block" : "none";
     this.swatchMarkers[1].style.display = index === 1 ? "block" : "none";
     this.layoutEditor();
   }
 
+  /** Pick a share-gradient color (0 = top, 1 = bottom) — reuses the picker, but
+   * routes the result to the gradient and shows it inside the share bar. */
+  private openGradientColor(index: number): void {
+    this.colorTarget = "gradient";
+    this.activeColor = index;
+    this.shareBar.insertBefore(this.colorPop, this.shareBar.lastElementChild);
+    this.colorPop.style.display = "block";
+    this.gradientMarker.style.display = "none";
+    this.swatchMarkers.forEach((m) => (m.style.display = "none"));
+    this.gradMarkers[0].style.display = index === 0 ? "block" : "none";
+    this.gradMarkers[1].style.display = index === 1 ? "block" : "none";
+  }
+
   private closeColor(): void {
     this.colorPop.style.display = "none";
-    this.swatchMarkers[0].style.display = "none";
-    this.swatchMarkers[1].style.display = "none";
+    this.swatchMarkers.forEach((m) => (m.style.display = "none"));
+    this.gradMarkers.forEach((m) => (m.style.display = "none"));
     this.layoutEditor();
   }
 
@@ -541,11 +604,16 @@ export class ControlPanel {
     this.gradientMarker.style.left = `${nx * 100}%`;
     this.gradientMarker.style.top = `${ny * 100}%`;
 
-    this.paintSwatch(
-      this.activeColor === 0 ? this.swatchTop : this.swatchBottom,
-      color,
-    );
-    this.cb.onColor(this.activeColor, color);
+    if (this.colorTarget === "gradient") {
+      this.paintSwatch(this.activeColor === 0 ? this.gradTop : this.gradBottom, color);
+      this.cb.onShareColor(this.activeColor, color);
+    } else {
+      this.paintSwatch(
+        this.activeColor === 0 ? this.swatchTop : this.swatchBottom,
+        color,
+      );
+      this.cb.onColor(this.activeColor, color);
+    }
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -596,16 +664,29 @@ export class ControlPanel {
       width: `${COLUMN_WIDTH}px`,
       padding: "9px 0",
       borderRadius: "12px",
-      border: `1px solid rgba(${dark ? "255,255,255" : "0,0,0"},0.25)`,
-      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
-      color: dark ? "#f2f2f4" : "#6e6e6e",
       font: "13px system-ui, sans-serif",
       textAlign: "center",
       cursor: "pointer",
-      boxShadow: dark ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
     } as CSSStyleDeclaration);
+    this.applyButtonVariant(btn, dark);
     btn.addEventListener("click", onClick);
     return btn;
+  }
+
+  /** The light (dark-on-white) or reversed (light-on-dark) card-button colors. */
+  private applyButtonVariant(btn: HTMLButtonElement, dark: boolean): void {
+    Object.assign(btn.style, {
+      border: `1px solid rgba(${dark ? "255,255,255" : "0,0,0"},0.25)`,
+      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
+      color: dark ? "#f2f2f4" : "#6e6e6e",
+      boxShadow: dark ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
+    } as CSSStyleDeclaration);
+  }
+
+  /** Flip the over-background buttons (home + share bars) light/dark, e.g. when
+   * the share gradient becomes too bright for the reversed style. */
+  setReversed(dark: boolean): void {
+    for (const btn of this.reversibleBtns) this.applyButtonVariant(btn, dark);
   }
 
   /** A rounded card that stacks borderless rows (made with makeParamButton)
@@ -648,7 +729,34 @@ export class ControlPanel {
     return btn;
   }
 
-  private makeSwatchHalf(): HTMLDivElement {
+  /** A two-tone color swatch (top/bottom halves), each with a hidden active
+   * marker; tapping a half calls onHalf(0=top, 1=bottom). */
+  private makeSwatch(
+    markers: HTMLDivElement[],
+    onHalf: (index: number) => void,
+  ): { swatch: HTMLDivElement; top: HTMLDivElement; bottom: HTMLDivElement } {
+    const swatch = document.createElement("div");
+    Object.assign(swatch.style, {
+      height: "56px",
+      borderRadius: "12px",
+      overflow: "hidden",
+      border: "1px solid rgba(0,0,0,0.08)",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+      cursor: "pointer",
+      display: "flex",
+      flexDirection: "column",
+    } as CSSStyleDeclaration);
+    const top = this.makeSwatchHalf(markers);
+    const bottom = this.makeSwatchHalf(markers);
+    swatch.append(top, bottom);
+    swatch.addEventListener("click", (e) => {
+      const rect = swatch.getBoundingClientRect();
+      onHalf(e.clientY - rect.top < rect.height / 2 ? 0 : 1);
+    });
+    return { swatch, top, bottom };
+  }
+
+  private makeSwatchHalf(markers: HTMLDivElement[]): HTMLDivElement {
     const half = document.createElement("div");
     Object.assign(half.style, {
       flex: "1",
@@ -660,7 +768,7 @@ export class ControlPanel {
     marker.style.top = "50%";
     marker.style.display = "none";
     half.appendChild(marker);
-    this.swatchMarkers.push(marker);
+    markers.push(marker);
     return half;
   }
 
