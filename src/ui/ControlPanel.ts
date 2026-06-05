@@ -389,21 +389,21 @@ export class ControlPanel {
       const scale = naturalH > 0 ? Math.min(1, availH / naturalH) : 1;
       this.wrap.style.transform = scale < 1 ? `scale(${scale})` : "none";
     } else {
-      // Doesn't fit under: keep the bar top-left (scaled to fit) and move the
-      // sub-editor to the right edge of the screen (scaled to fit if needed,
-      // clearing the bottom-right full-screen button).
-      const barScale = barH > 0 ? Math.min(1, availH / barH) : 1;
-      this.wrap.style.transform = barScale < 1 ? `scale(${barScale})` : "none";
+      // Doesn't fit under: keep the bar top-left and move the sub-editor to the
+      // right edge of the screen. Both use the SAME scale so all editor buttons
+      // stay one size (the sub-editor is shorter than the bar, so the bar's
+      // scale always fits it).
+      const scale = barH > 0 ? Math.min(1, availH / barH) : 1;
+      const css = scale < 1 ? `scale(${scale})` : "none";
+      this.wrap.style.transform = css;
 
       if (this.sub.parentElement !== this.uiRoot) this.uiRoot.appendChild(this.sub);
-      const subAvailH = Math.max(60, availH - 48);
-      const subScale = subH > 0 ? Math.min(1, subAvailH / subH) : 1;
       Object.assign(this.sub.style, {
         position: "absolute",
         top: "14px",
         right: "14px",
         transformOrigin: "top right",
-        transform: subScale < 1 ? `scale(${subScale})` : "none",
+        transform: css,
       } as CSSStyleDeclaration);
     }
   }
