@@ -77,8 +77,10 @@ scripts/         dev/verification tools (PSD decode, scene extract, gradient com
 - Petal colors of built-in `helloflower1.0` flowers use `colorMult = 2/textureMultiplier`.
 - Scene tuning values were extracted from the **binary** Unity scene and are EXACT:
   `colorMultiplier 1.5, textureMultiplier 1.1, specularMultiplier 0.5, shadowMultiplier 0.7`
-  (in `FlowerConfig`). Ambient is `0.25` (scene RenderSettings ambient is 0.314;
-  we chose 0.25). Petal point counts (32/12) are still placeholders.
+  (in `FlowerConfig`). The exception is `specularMultiplier`, deliberately toned
+  down to `0.1` (scene is 0.5) for a softer highlight. Ambient is `0.25` (scene
+  RenderSettings ambient is 0.314; we chose 0.25). Petal point counts (32/12) are
+  still placeholders.
 - Petal shader = `texture*(ambient + cameraHeadlight·N·V + mainDir·N·L) + specular·specMask`
   (custom ShaderMaterial; NOT MeshPhong — its PBR /π darkened it). Specular is gated by
   the lightmap (packed into the texture **alpha**) so the base stays dark.

@@ -29,11 +29,12 @@ export interface FlowerConfig {
   device: DeviceAssets;
 }
 
-/** Multipliers are the exact scene values; point counts are placeholders. */
+/** Multipliers are the exact scene values (except specular, tuned down from the
+ * scene's 0.5); point counts are placeholders. */
 export const DEFAULT_CONFIG: FlowerConfig = {
   colorMultiplier: 1.5,
   textureMultiplier: 1.1,
-  specularMultiplier: 0.5,
+  specularMultiplier: 0.1, // scene value is 0.5; toned down for a softer highlight
   shadowMultiplier: 0.7,
   device: {
     petalCurvePointCount: 32,
