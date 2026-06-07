@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "zip:itch": "npm run build && node scripts/zip-itch.mjs",
+    "deploy:itch": "npm run build && node scripts/deploy-itch.mjs"
   },
   "dependencies": {
     "@tweenjs/tween.js": "^25.0.0",

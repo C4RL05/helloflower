@@ -26,7 +26,15 @@ npm run preview     # serve dist/ (used by e2e; see below)
 npm test            # Vitest unit tests (28)
 npm run test:e2e    # Playwright e2e (6) — auto-builds + serves + SwiftShader
 npm run typecheck   # tsc --noEmit
+npm run zip:itch    # build → helloflower-itch.zip (index.html at root, for itch.io)
+npm run deploy:itch # build → butler push dist to helloenjoy/helloflower:html5
 ```
+
+The web build is deployed to Cloudflare Pages (project `helloflower`,
+`helloflower.pages.dev`): `npm run build && npx wrangler pages deploy dist
+--project-name helloflower --branch main`. The itch.io build uses **relative
+asset paths** (`base: "./"` in `vite.config.ts`) so it runs from itch's subpath;
+`deploy:itch` needs butler installed + `butler login` (or `BUTLER_API_KEY`).
 
 ## Architecture
 
