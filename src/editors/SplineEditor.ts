@@ -1,19 +1,18 @@
 import {
-  BufferAttribute,
-  BufferGeometry,
   CanvasTexture,
   Group,
-  Line,
   PerspectiveCamera,
   Plane,
   Raycaster,
   Scene,
-  ShaderMaterial,
   Sprite,
   SpriteMaterial,
   Vector2,
   Vector3,
 } from "three";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { Corolla } from "../scene/Corolla";
 import type { PointerInput } from "../input/PointerInput";
 
@@ -34,8 +33,9 @@ import type { PointerInput } from "../input/PointerInput";
  */
 const HANDLE_PX = 40;
 const ACTIVE_PX = 52;
-const DASH_COUNT = 26;
-const DASH_SPEED = 1.2;
+const CURVE_PX = 5; // spline curve thickness (screen pixels)
+const DASH_COUNT = 26; // marching-ants dash cells along the whole curve
+const DASH_SPEED = 1.2; // dash cells marched per second
 
 export class SplineEditor {
   private readonly camera: PerspectiveCamera;
@@ -44,8 +44,10 @@ export class SplineEditor {
   private readonly handleTex: CanvasTexture;
 
   private readonly handles: Sprite[] = [];
-  private line: Line | null = null;
-  private lineMat: ShaderMaterial | null = null;
+  private line: Line2 | null = null; // black dashed line (marches on top)
+  private lineMat: LineMaterial | null = null;
+  private lineBase: Line2 | null = null; // solid white line under the dashes
+  private lineBaseMat: LineMaterial | null = null;
 
   private corolla: Corolla | null = null;
   private dragging = -1;
@@ -53,8 +55,8 @@ export class SplineEditor {
   private readonly hit = new Vector3();
   private readonly normal = new Vector3();
   private readonly tmp = new Vector3();
-  private time = 0;
   private viewportHeight = 600;
+  private dashCell = 0; // world length of one dash+gap cell (for the march speed)
 
   constructor(camera: PerspectiveCamera) {
     this.camera = camera;
@@ -96,8 +98,16 @@ export class SplineEditor {
       this.handles.push(sprite);
     }
 
-    this.lineMat = makeMarchingAntsMaterial();
-    this.line = new Line(new BufferGeometry(), this.lineMat);
+    // Two stacked lines make classic black/white marching ants: a solid white
+    // base, with a black dashed line marching on top (its gaps reveal the white).
+    this.lineBaseMat = makeCurveMaterial(0xffffff, false);
+    this.lineBase = new Line2(new LineGeometry(), this.lineBaseMat);
+    this.lineBase.renderOrder = 998;
+    this.lineBase.frustumCulled = false;
+    this.group.add(this.lineBase);
+
+    this.lineMat = makeCurveMaterial(0x000000, true);
+    this.line = new Line2(new LineGeometry(), this.lineMat);
     this.line.renderOrder = 999;
     this.line.frustumCulled = false;
     this.group.add(this.line);
@@ -111,13 +121,17 @@ export class SplineEditor {
       (h.material as SpriteMaterial).dispose();
     }
     this.handles.length = 0;
-    if (this.line) {
-      this.group.remove(this.line);
-      this.line.geometry.dispose();
-      this.lineMat?.dispose();
+    for (const line of [this.line, this.lineBase]) {
+      if (!line) continue;
+      this.group.remove(line);
+      line.geometry.dispose();
     }
+    this.lineMat?.dispose();
+    this.lineBaseMat?.dispose();
     this.line = null;
     this.lineMat = null;
+    this.lineBase = null;
+    this.lineBaseMat = null;
     this.corolla = null;
     this.dragging = -1;
   }
@@ -178,11 +192,17 @@ export class SplineEditor {
     return false;
   }
 
-  /** Animate the dashes and keep handles at a constant screen size. */
+  /** March the dashes, keep handles at a constant screen size, and keep the
+   * curve width in sync with the viewport (LineMaterial sizes its pixel width
+   * against `resolution`). */
   update(dtSeconds: number, viewportHeight: number): void {
     this.viewportHeight = viewportHeight;
-    this.time += dtSeconds * DASH_SPEED;
-    if (this.lineMat) this.lineMat.uniforms.time.value = this.time;
+    const resW = this.camera.aspect * viewportHeight;
+    this.lineBaseMat?.resolution.set(resW, viewportHeight);
+    if (this.lineMat) {
+      this.lineMat.resolution.set(resW, viewportHeight);
+      this.lineMat.dashOffset -= dtSeconds * DASH_SPEED * this.dashCell;
+    }
 
     if (!this.corolla?.referenceNode) return;
     this.corolla.referenceNode.updateWorldMatrix(true, false);
@@ -199,7 +219,6 @@ export class SplineEditor {
     const ref = this.corolla.referenceNode;
 
     const positions = new Float32Array(samples.length * 3);
-    const dist = new Float32Array(samples.length);
     let total = 0;
     const prev = new Vector3();
     for (let i = 0; i < samples.length; i++) {
@@ -209,15 +228,20 @@ export class SplineEditor {
       positions[i * 3 + 1] = this.tmp.y;
       positions[i * 3 + 2] = this.tmp.z;
       if (i > 0) total += this.tmp.distanceTo(prev);
-      dist[i] = total;
       prev.copy(this.tmp);
     }
-    for (let i = 0; i < dist.length; i++) dist[i] = total > 0 ? dist[i] / total : 0;
+    (this.line.geometry as LineGeometry).setPositions(positions);
+    this.line.computeLineDistances(); // world-space distances for the dashes
+    if (this.lineBase)
+      (this.lineBase.geometry as LineGeometry).setPositions(positions);
 
-    const geo = this.line.geometry;
-    geo.setAttribute("position", new BufferAttribute(positions, 3));
-    geo.setAttribute("lineDistance", new BufferAttribute(dist, 1));
-    geo.computeBoundingSphere();
+    // Keep a constant DASH_COUNT of dashes regardless of the curve's length:
+    // size each dash+gap cell to a fraction of the total, 50% dash / 50% gap.
+    this.dashCell = total / DASH_COUNT;
+    if (this.lineMat) {
+      this.lineMat.dashSize = this.dashCell / 2;
+      this.lineMat.gapSize = this.dashCell / 2;
+    }
   }
 
   private positionHandles(): void {
@@ -269,28 +293,16 @@ function makeHandleTexture(): CanvasTexture {
   return tex;
 }
 
-function makeMarchingAntsMaterial(): ShaderMaterial {
-  return new ShaderMaterial({
+/** A thick screen-space line for the spline curve (fat-line shader; a plain
+ * three Line ignores linewidth on WebGL). `resolution` is set each frame; for
+ * the dashed line the dash sizes are set per rebuild (they scale with the curve
+ * length) and `dashOffset` is animated in update to make the dashes march. */
+function makeCurveMaterial(color: number, dashed: boolean): LineMaterial {
+  return new LineMaterial({
+    color,
+    linewidth: CURVE_PX, // screen pixels (worldUnits stays false)
+    dashed,
     transparent: true,
     depthTest: false,
-    uniforms: { time: { value: 0 }, dashCount: { value: DASH_COUNT } },
-    vertexShader: /* glsl */ `
-      attribute float lineDistance;
-      varying float vDist;
-      void main() {
-        vDist = lineDistance;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform float time;
-      uniform float dashCount;
-      varying float vDist;
-      void main() {
-        float d = vDist * dashCount - time;
-        if (fract(d) > 0.5) discard;
-        gl_FragColor = vec4(0.42, 0.47, 0.56, 1.0);
-      }
-    `,
   });
 }

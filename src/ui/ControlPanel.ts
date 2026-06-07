@@ -80,6 +80,7 @@ export class ControlPanel {
   private readonly selectMsg: HTMLDivElement; // "select or touch petals to edit"
   private readonly shareBar: HTMLDivElement; // share: back + gradient swatch + share
   private readonly receivedBar: HTMLDivElement; // received shared flower: back only
+  private readonly gradSwatchEl: HTMLDivElement; // the gradient swatch (border reverses)
   private readonly gradTop: HTMLDivElement; // top gradient swatch half
   private readonly gradBottom: HTMLDivElement; // bottom gradient swatch half
   private readonly gradMarkers: HTMLDivElement[] = [];
@@ -348,6 +349,7 @@ export class ControlPanel {
     const gradSwatch = this.makeSwatch(this.gradMarkers, (i) =>
       this.openGradientColor(i),
     );
+    this.gradSwatchEl = gradSwatch.swatch;
     this.gradTop = gradSwatch.top;
     this.gradBottom = gradSwatch.bottom;
     const shareCopy = this.makeButton("share", () => this.cb.onShareCopy(), true);
@@ -712,7 +714,9 @@ export class ControlPanel {
   private applyButtonVariant(btn: HTMLButtonElement, dark: boolean): void {
     Object.assign(btn.style, {
       border: `1px solid rgba(${dark ? "255,255,255" : "0,0,0"},0.25)`,
-      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.92)",
+      // Both variants are translucent so the background color shows through; the
+      // light one stays opaque enough to keep the dark text readable.
+      background: dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.35)",
       color: dark ? "#f2f2f4" : "#6e6e6e",
       boxShadow: dark ? "none" : "0 1px 2px rgba(0,0,0,0.06)",
     } as CSSStyleDeclaration);
@@ -722,6 +726,11 @@ export class ControlPanel {
    * the share gradient becomes too bright for the reversed style. */
   setReversed(dark: boolean): void {
     for (const btn of this.reversibleBtns) this.applyButtonVariant(btn, dark);
+    // Outline the gradient swatch like the buttons so it stays visible when both
+    // its colors match the background (e.g. all-black on a black gradient).
+    this.gradSwatchEl.style.border = `1px solid rgba(${
+      dark ? "255,255,255" : "0,0,0"
+    },0.25)`;
   }
 
   /** A rounded card that stacks borderless rows (made with makeParamButton)

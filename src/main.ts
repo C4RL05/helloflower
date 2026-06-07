@@ -27,6 +27,10 @@ import type { Color } from "three";
 
 const IDLE_DELAY_MS = 2500;
 const INTRO_FADE_MS = 400; // intro logo fade-out; keep the CSS transition in sync
+const INTRO_FADE_IN_MS = 1200; // intro logo fade-in (slower than the fade-out)
+const INTRO_SPIN = 0.04; // landing idle spin (deg/frame) — much slower than home's 0.2
+const HOME_ELEV = 14; // home/editor side ("3/4") view elevation; intro is top-down (88)
+const INTRO_SPIN_BURST = 270; // one-shot azimuth whip when leaving the landing (deg)
 const UNSELECTED_ALPHA = 0.15; // editor: faded non-selected corollas (Unity unselectedPetalAlpha)
 const SELECT_ALPHA = 0.5; // corolla opacity in the exploded select view
 const TAP_PX = 6; // movement under this (px) counts as a tap, not a drag
@@ -442,7 +446,15 @@ class App {
     this.setFullscreenVariant(this.fullscreenBtn, true); // reversed on black
     this.panel.setVisible(false);
     this.introEl.style.display = "flex";
-    if (this.logoEl) this.logoEl.style.filter = "brightness(1)";
+    if (this.logoEl) {
+      // Fade the logo in from black: start dark, force a reflow so the next
+      // change animates, then brighten over the (longer) fade-in duration.
+      this.logoEl.style.transition = "none";
+      this.logoEl.style.filter = "brightness(0)";
+      void this.logoEl.offsetWidth;
+      this.logoEl.style.transition = `filter ${INTRO_FADE_IN_MS}ms`;
+      this.logoEl.style.filter = "brightness(1)";
+    }
     this.orbit.setAngles(0, 88); // top-down
     this.autoSpin = true;
     this.lastInteraction = 0; // start the idle rotation immediately
@@ -453,9 +465,15 @@ class App {
     if (!this.intro || !this.introEl) return;
     this.intro = false;
     const el = this.introEl;
-    if (this.logoEl) this.logoEl.style.filter = "brightness(0)"; // fade to black
+    if (this.logoEl) {
+      this.logoEl.style.transition = `filter ${INTRO_FADE_MS}ms`;
+      this.logoEl.style.filter = "brightness(0)"; // fade to black
+    }
     window.setTimeout(() => (el.style.display = "none"), INTRO_FADE_MS);
     this.enterHome();
+    // Whip the flower around once as it drops from top-down into the side view;
+    // the eased follow decelerates the burst so it settles into the idle spin.
+    this.orbit.glideTo(this.orbit.azimuth + INTRO_SPIN_BURST, HOME_ELEV);
   }
 
   /** Home menu: black background, top-down spinning flower, edit/gallery/share.
@@ -471,7 +489,7 @@ class App {
     this.panel.setVisible(true);
     this.panel.showHome();
     this.updateCorollaAppearance(); // merge the corollas back, opaque
-    this.orbit.glideTo(this.orbit.azimuth, 88); // ease back to top-down
+    this.orbit.glideTo(this.orbit.azimuth, HOME_ELEV); // ease to the side view
     this.autoSpin = true;
     this.lastInteraction = 0; // keep the idle rotation running
   }
@@ -710,8 +728,10 @@ class App {
     }
 
     const spinFrames = 60 * dt; // keep deg/sec constant across refresh rates
-    if (this.intro || this.home || this.received) {
-      this.orbit.spinIdle(0.2 * spinFrames); // spin under the logo / home / received
+    if (this.intro) {
+      this.orbit.spinIdle(INTRO_SPIN * spinFrames); // very slow under the logo
+    } else if (this.home || this.received) {
+      this.orbit.spinIdle(0.2 * spinFrames); // home / received idle spin
     } else if (
       this.autoSpin &&
       !this.shapeMode &&
